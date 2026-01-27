@@ -19,14 +19,14 @@
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 20px;
     }
 
     header {
       text-align: center;
-      padding: 30px 0;
+      padding: 20px 0;
     }
 
     header h1 {
@@ -45,7 +45,7 @@
 
     .main-content {
       display: grid;
-      grid-template-columns: 1fr 300px;
+      grid-template-columns: 1fr 320px;
       gap: 30px;
       margin-top: 20px;
     }
@@ -65,6 +65,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      position: relative;
     }
 
     .drop-zone {
@@ -103,38 +104,87 @@
       display: none;
     }
 
+    .canvas-container {
+      position: relative;
+      display: inline-block;
+    }
+
     #previewCanvas {
       max-width: 100%;
       max-height: 500px;
       border-radius: 8px;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      cursor: crosshair;
     }
 
     #previewCanvas.hidden {
       display: none;
     }
 
+    #brushCursor {
+      position: absolute;
+      border: 2px solid #00d2ff;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      display: none;
+      box-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
+    }
+
     .controls {
       background: rgba(255, 255, 255, 0.05);
       border-radius: 16px;
       padding: 25px;
+      max-height: calc(100vh - 150px);
+      overflow-y: auto;
+    }
+
+    .control-section {
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .control-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .control-section h3 {
+      font-size: 0.9rem;
+      color: #8892b0;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .control-group {
-      margin-bottom: 25px;
+      margin-bottom: 18px;
+    }
+
+    .control-group:last-child {
+      margin-bottom: 0;
     }
 
     .control-group label {
       display: block;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       font-weight: 500;
       color: #ccd6f6;
+      font-size: 0.95rem;
     }
 
     .control-group .value {
       float: right;
       color: #00d2ff;
       font-weight: 600;
+    }
+
+    .control-group .shortcut {
+      font-size: 0.75rem;
+      color: #8892b0;
+      margin-left: 5px;
     }
 
     input[type="range"] {
@@ -167,9 +217,9 @@
     }
 
     .angle-preview {
-      width: 80px;
-      height: 80px;
-      margin: 15px auto;
+      width: 60px;
+      height: 60px;
+      margin: 10px auto;
       border-radius: 50%;
       border: 2px solid rgba(255, 255, 255, 0.2);
       position: relative;
@@ -181,19 +231,47 @@
       position: absolute;
       top: 50%;
       left: 50%;
-      width: 35px;
+      width: 25px;
       height: 3px;
       background: linear-gradient(90deg, #00d2ff, #3a7bd5);
       transform-origin: left center;
       border-radius: 2px;
     }
 
+    .mode-toggle {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: transparent;
+      color: #ccd6f6;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .mode-btn:hover {
+      border-color: rgba(0, 210, 255, 0.5);
+    }
+
+    .mode-btn.active {
+      border-color: #00d2ff;
+      background: rgba(0, 210, 255, 0.2);
+      color: #00d2ff;
+    }
+
     .btn {
       width: 100%;
-      padding: 14px 20px;
+      padding: 12px 20px;
       border: none;
       border-radius: 8px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
@@ -225,6 +303,16 @@
 
     .btn-secondary:hover {
       background: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-warning {
+      background: rgba(255, 165, 0, 0.2);
+      color: #ffa500;
+      border: 1px solid rgba(255, 165, 0, 0.3);
+    }
+
+    .btn-warning:hover {
+      background: rgba(255, 165, 0, 0.3);
     }
 
     .processing {
@@ -263,7 +351,7 @@
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.2);
       color: white;
-      font-size: 1rem;
+      font-size: 0.95rem;
       cursor: pointer;
     }
 
@@ -272,9 +360,43 @@
       color: white;
     }
 
+    .keyboard-help {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.8rem;
+      color: #8892b0;
+    }
+
+    .keyboard-help h4 {
+      color: #ccd6f6;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+    }
+
+    .keyboard-help ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .keyboard-help li {
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .keyboard-help kbd {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.8rem;
+    }
+
     footer {
       text-align: center;
-      padding: 30px;
+      padding: 20px;
       color: #8892b0;
       font-size: 0.9rem;
     }
@@ -282,6 +404,22 @@
     footer a {
       color: #00d2ff;
       text-decoration: none;
+    }
+
+    .status-bar {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #8892b0;
+      display: none;
+    }
+
+    .status-bar.visible {
+      display: block;
     }
   </style>
 </head>
@@ -300,52 +438,99 @@
           </svg>
           <p>クリックまたはドラッグ&ドロップで<br>画像をアップロード</p>
         </div>
-        <canvas id="previewCanvas" class="hidden"></canvas>
+        <div class="canvas-container">
+          <canvas id="previewCanvas" class="hidden"></canvas>
+          <div id="brushCursor"></div>
+        </div>
         <input type="file" id="fileInput" class="file-input" accept="image/*">
         <div class="processing" id="processing">
           <div class="spinner"></div>
           <p>処理中...</p>
         </div>
+        <div class="status-bar" id="statusBar">ブラシモード: ドラッグでブラーを適用</div>
       </div>
 
       <div class="controls">
-        <div class="control-group">
-          <label>
-            ブラーの角度
-            <span class="value" id="angleValue">0°</span>
-          </label>
-          <input type="range" id="angleSlider" min="0" max="360" value="0">
-          <div class="angle-preview" id="anglePreview"></div>
+        <div class="control-section">
+          <h3>モード選択</h3>
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="brushModeBtn">🖌️ ブラシ</button>
+            <button class="mode-btn" id="fullModeBtn">🖼️ 全体</button>
+          </div>
         </div>
 
-        <div class="control-group">
-          <label>
-            ブラーの強度
-            <span class="value" id="intensityValue">20</span>
-          </label>
-          <input type="range" id="intensitySlider" min="1" max="100" value="20">
+        <div class="control-section" id="brushControls">
+          <h3>ブラシ設定</h3>
+          <div class="control-group">
+            <label>
+              ブラシサイズ
+              <span class="shortcut">[+/-]</span>
+              <span class="value" id="brushSizeValue">50</span>
+            </label>
+            <input type="range" id="brushSizeSlider" min="10" max="200" value="50">
+          </div>
         </div>
 
-        <div class="control-group">
-          <label>
-            サンプル数（品質）
-            <span class="value" id="samplesValue">15</span>
-          </label>
-          <input type="range" id="samplesSlider" min="5" max="50" value="15">
+        <div class="control-section">
+          <h3>ブラー設定</h3>
+          <div class="control-group">
+            <label>
+              角度
+              <span class="shortcut">[4/6]</span>
+              <span class="value" id="angleValue">0°</span>
+            </label>
+            <input type="range" id="angleSlider" min="0" max="360" value="0">
+            <div class="angle-preview" id="anglePreview"></div>
+          </div>
+
+          <div class="control-group">
+            <label>
+              強度
+              <span class="shortcut">[2/8]</span>
+              <span class="value" id="intensityValue">20</span>
+            </label>
+            <input type="range" id="intensitySlider" min="1" max="100" value="20">
+          </div>
+
+          <div class="control-group">
+            <label>
+              サンプル数
+              <span class="shortcut">[7/9]</span>
+              <span class="value" id="samplesValue">15</span>
+            </label>
+            <input type="range" id="samplesSlider" min="5" max="50" value="15">
+          </div>
         </div>
 
-        <div class="control-group">
-          <label>出力形式</label>
-          <select class="quality-select" id="formatSelect">
-            <option value="png">PNG（高品質・透明対応）</option>
-            <option value="jpeg">JPEG（小さいファイルサイズ）</option>
-            <option value="webp">WebP（高効率圧縮）</option>
-          </select>
+        <div class="control-section">
+          <h3>出力</h3>
+          <div class="control-group">
+            <label>形式</label>
+            <select class="quality-select" id="formatSelect">
+              <option value="png">PNG（高品質・透明対応）</option>
+              <option value="jpeg">JPEG（小さいファイルサイズ）</option>
+              <option value="webp">WebP（高効率圧縮）</option>
+            </select>
+          </div>
+
+          <button class="btn btn-primary" id="applyBtn" disabled>全体にブラーを適用</button>
+          <button class="btn btn-primary" id="downloadBtn" disabled>画像をダウンロード</button>
+          <button class="btn btn-warning" id="undoBtn" disabled>元に戻す (Ctrl+Z)</button>
+          <button class="btn btn-secondary" id="resetBtn">リセット</button>
         </div>
 
-        <button class="btn btn-primary" id="applyBtn" disabled>モーションブラーを適用</button>
-        <button class="btn btn-primary" id="downloadBtn" disabled>画像をダウンロード</button>
-        <button class="btn btn-secondary" id="resetBtn">リセット</button>
+        <div class="control-section">
+          <div class="keyboard-help">
+            <h4>キーボードショートカット</h4>
+            <ul>
+              <li><span>角度 ±5°</span> <kbd>4</kbd> / <kbd>6</kbd></li>
+              <li><span>強度 ±5</span> <kbd>2</kbd> / <kbd>8</kbd></li>
+              <li><span>サンプル ±1</span> <kbd>7</kbd> / <kbd>9</kbd></li>
+              <li><span>ブラシ ±10</span> <kbd>-</kbd> / <kbd>+</kbd></li>
+              <li><span>元に戻す</span> <kbd>Ctrl+Z</kbd></li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -361,6 +546,15 @@
     const previewCanvas = document.getElementById('previewCanvas');
     const ctx = previewCanvas.getContext('2d');
     const processing = document.getElementById('processing');
+    const brushCursor = document.getElementById('brushCursor');
+    const statusBar = document.getElementById('statusBar');
+
+    const brushModeBtn = document.getElementById('brushModeBtn');
+    const fullModeBtn = document.getElementById('fullModeBtn');
+    const brushControls = document.getElementById('brushControls');
+
+    const brushSizeSlider = document.getElementById('brushSizeSlider');
+    const brushSizeValue = document.getElementById('brushSizeValue');
 
     const angleSlider = document.getElementById('angleSlider');
     const angleValue = document.getElementById('angleValue');
@@ -376,11 +570,23 @@
 
     const applyBtn = document.getElementById('applyBtn');
     const downloadBtn = document.getElementById('downloadBtn');
+    const undoBtn = document.getElementById('undoBtn');
     const resetBtn = document.getElementById('resetBtn');
 
     // State
     let originalImage = null;
-    let processedImageData = null;
+    let currentImageData = null;
+    let blurredImageData = null;
+    let historyStack = [];
+    const MAX_HISTORY = 20;
+    let isBrushMode = true;
+    let isDrawing = false;
+    let canvasScale = 1;
+
+    // Offscreen canvases
+    let originalCanvas = null;
+    let blurredCanvas = null;
+    let workingCanvas = null;
 
     // Event Listeners for file upload
     dropZone.addEventListener('click', () => fileInput.click());
@@ -421,38 +627,99 @@
           previewCanvas.width = img.width;
           previewCanvas.height = img.height;
 
+          // Create offscreen canvases
+          originalCanvas = document.createElement('canvas');
+          originalCanvas.width = img.width;
+          originalCanvas.height = img.height;
+          originalCanvas.getContext('2d').drawImage(img, 0, 0);
+
+          blurredCanvas = document.createElement('canvas');
+          blurredCanvas.width = img.width;
+          blurredCanvas.height = img.height;
+
+          workingCanvas = document.createElement('canvas');
+          workingCanvas.width = img.width;
+          workingCanvas.height = img.height;
+
+          // Generate blurred version
+          generateBlurredImage();
+
           // Draw original image
           ctx.drawImage(img, 0, 0);
+
+          // Calculate scale for brush cursor
+          updateCanvasScale();
 
           // Show canvas, hide drop zone
           dropZone.classList.add('hidden');
           previewCanvas.classList.remove('hidden');
 
-          // Enable apply button
+          // Enable buttons
           applyBtn.disabled = false;
-          processedImageData = null;
-          downloadBtn.disabled = true;
+          downloadBtn.disabled = false;
+
+          // Clear history
+          historyStack = [];
+          undoBtn.disabled = true;
+
+          // Show status bar in brush mode
+          if (isBrushMode) {
+            statusBar.classList.add('visible');
+          }
         };
         img.src = e.target.result;
       };
       reader.readAsDataURL(file);
     }
 
+    function updateCanvasScale() {
+      const rect = previewCanvas.getBoundingClientRect();
+      canvasScale = previewCanvas.width / rect.width;
+    }
+
+    function generateBlurredImage() {
+      const blurredCtx = blurredCanvas.getContext('2d');
+      const angle = parseFloat(angleSlider.value);
+      const intensity = parseFloat(intensitySlider.value);
+      const samples = parseInt(samplesSlider.value);
+
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      blurredCtx.clearRect(0, 0, width, height);
+
+      const radians = (angle * Math.PI) / 180;
+      const dx = Math.cos(radians);
+      const dy = Math.sin(radians);
+
+      blurredCtx.globalAlpha = 1 / samples;
+
+      for (let i = 0; i < samples; i++) {
+        const offset = (i - samples / 2) * (intensity / samples);
+        const offsetX = dx * offset;
+        const offsetY = dy * offset;
+        blurredCtx.drawImage(originalImage, offsetX, offsetY);
+      }
+
+      blurredCtx.globalAlpha = 1;
+    }
+
     // Update angle preview
     function updateAnglePreview() {
       const angle = angleSlider.value;
       angleValue.textContent = angle + '°';
-      anglePreview.style.setProperty('--angle', angle + 'deg');
-      anglePreview.querySelector('::after') || (anglePreview.style.cssText = `--angle: ${angle}deg`);
-      document.documentElement.style.setProperty('--blur-angle', angle + 'deg');
 
-      // Update the pseudo-element rotation
       const styleSheet = document.styleSheets[0];
       for (let i = 0; i < styleSheet.cssRules.length; i++) {
         if (styleSheet.cssRules[i].selectorText === '.angle-preview::after') {
           styleSheet.cssRules[i].style.transform = `rotate(${angle}deg)`;
           break;
         }
+      }
+
+      // Regenerate blurred image when angle changes
+      if (originalImage) {
+        generateBlurredImage();
       }
     }
 
@@ -461,99 +728,251 @@
 
     intensitySlider.addEventListener('input', () => {
       intensityValue.textContent = intensitySlider.value;
+      if (originalImage) {
+        generateBlurredImage();
+      }
     });
 
     samplesSlider.addEventListener('input', () => {
       samplesValue.textContent = samplesSlider.value;
+      if (originalImage) {
+        generateBlurredImage();
+      }
     });
 
-    // Apply motion blur
+    brushSizeSlider.addEventListener('input', () => {
+      brushSizeValue.textContent = brushSizeSlider.value;
+      updateBrushCursor();
+    });
+
+    // Mode toggle
+    brushModeBtn.addEventListener('click', () => {
+      isBrushMode = true;
+      brushModeBtn.classList.add('active');
+      fullModeBtn.classList.remove('active');
+      brushControls.style.display = 'block';
+      applyBtn.textContent = '全体にブラーを適用';
+      if (originalImage) {
+        statusBar.classList.add('visible');
+      }
+    });
+
+    fullModeBtn.addEventListener('click', () => {
+      isBrushMode = false;
+      fullModeBtn.classList.add('active');
+      brushModeBtn.classList.remove('active');
+      brushControls.style.display = 'none';
+      applyBtn.textContent = '全体にブラーを適用';
+      statusBar.classList.remove('visible');
+      brushCursor.style.display = 'none';
+    });
+
+    // Brush cursor
+    function updateBrushCursor(e) {
+      if (!isBrushMode || !originalImage) return;
+
+      const size = parseInt(brushSizeSlider.value) / canvasScale;
+      brushCursor.style.width = size + 'px';
+      brushCursor.style.height = size + 'px';
+
+      if (e) {
+        const rect = previewCanvas.getBoundingClientRect();
+        brushCursor.style.left = (e.clientX - rect.left) + 'px';
+        brushCursor.style.top = (e.clientY - rect.top) + 'px';
+      }
+    }
+
+    previewCanvas.addEventListener('mouseenter', () => {
+      if (isBrushMode && originalImage) {
+        brushCursor.style.display = 'block';
+        updateBrushCursor();
+      }
+    });
+
+    previewCanvas.addEventListener('mouseleave', () => {
+      brushCursor.style.display = 'none';
+    });
+
+    previewCanvas.addEventListener('mousemove', (e) => {
+      updateBrushCursor(e);
+      if (isDrawing && isBrushMode) {
+        applyBrushAt(e);
+      }
+    });
+
+    previewCanvas.addEventListener('mousedown', (e) => {
+      if (!isBrushMode || !originalImage) return;
+
+      // Save state for undo
+      saveToHistory();
+
+      isDrawing = true;
+      applyBrushAt(e);
+    });
+
+    previewCanvas.addEventListener('mouseup', () => {
+      isDrawing = false;
+    });
+
+    previewCanvas.addEventListener('mouseleave', () => {
+      isDrawing = false;
+    });
+
+    function applyBrushAt(e) {
+      const rect = previewCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * canvasScale;
+      const y = (e.clientY - rect.top) * canvasScale;
+      const radius = parseInt(brushSizeSlider.value) / 2;
+
+      // Use clipping to apply blur only in brush area
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.clip();
+
+      // Draw the blurred image in the clipped area
+      ctx.drawImage(blurredCanvas, 0, 0);
+
+      ctx.restore();
+    }
+
+    function saveToHistory() {
+      const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+      historyStack.push(imageData);
+
+      if (historyStack.length > MAX_HISTORY) {
+        historyStack.shift();
+      }
+
+      undoBtn.disabled = false;
+    }
+
+    function undo() {
+      if (historyStack.length === 0) return;
+
+      const imageData = historyStack.pop();
+      ctx.putImageData(imageData, 0, 0);
+
+      if (historyStack.length === 0) {
+        undoBtn.disabled = true;
+      }
+    }
+
+    undoBtn.addEventListener('click', undo);
+
+    // Apply motion blur to entire image
     applyBtn.addEventListener('click', () => {
       if (!originalImage) return;
+
+      saveToHistory();
 
       processing.classList.add('active');
       applyBtn.disabled = true;
 
-      // Use setTimeout to allow UI to update
       setTimeout(() => {
-        applyMotionBlur();
+        ctx.drawImage(blurredCanvas, 0, 0);
         processing.classList.remove('active');
         applyBtn.disabled = false;
-        downloadBtn.disabled = false;
       }, 50);
     });
 
-    function applyMotionBlur() {
-      const angle = parseFloat(angleSlider.value);
-      const intensity = parseFloat(intensitySlider.value);
-      const samples = parseInt(samplesSlider.value);
-
-      const width = originalImage.width;
-      const height = originalImage.height;
-
-      // Create temporary canvas for processing
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const tempCtx = tempCanvas.getContext('2d');
-
-      // Clear main canvas
-      ctx.clearRect(0, 0, width, height);
-
-      // Calculate direction vector
-      const radians = (angle * Math.PI) / 180;
-      const dx = Math.cos(radians);
-      const dy = Math.sin(radians);
-
-      // Draw multiple offset copies with transparency
-      ctx.globalAlpha = 1 / samples;
-
-      for (let i = 0; i < samples; i++) {
-        const offset = (i - samples / 2) * (intensity / samples);
-        const offsetX = dx * offset;
-        const offsetY = dy * offset;
-
-        ctx.drawImage(originalImage, offsetX, offsetY);
-      }
-
-      ctx.globalAlpha = 1;
-
-      processedImageData = previewCanvas.toDataURL(`image/${formatSelect.value}`, 0.92);
-    }
-
     // Download
     downloadBtn.addEventListener('click', () => {
-      if (!processedImageData) return;
+      if (!originalImage) return;
 
       const format = formatSelect.value;
+      const dataUrl = previewCanvas.toDataURL(`image/${format}`, 0.92);
       const link = document.createElement('a');
       link.download = `motion-blur-image.${format}`;
-      link.href = processedImageData;
+      link.href = dataUrl;
       link.click();
     });
 
     // Reset
     resetBtn.addEventListener('click', () => {
-      originalImage = null;
-      processedImageData = null;
+      if (!originalImage) return;
 
-      ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      ctx.drawImage(originalImage, 0, 0);
+      historyStack = [];
+      undoBtn.disabled = true;
+    });
 
-      dropZone.classList.remove('hidden');
-      previewCanvas.classList.add('hidden');
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      // Ignore if focused on input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
-      applyBtn.disabled = true;
-      downloadBtn.disabled = true;
+      const key = e.key;
 
-      fileInput.value = '';
+      // Numpad and number keys
+      switch (key) {
+        // Angle: 4 (decrease) / 6 (increase)
+        case '4':
+        case 'ArrowLeft':
+          angleSlider.value = Math.max(0, parseInt(angleSlider.value) - 5);
+          updateAnglePreview();
+          break;
+        case '6':
+        case 'ArrowRight':
+          angleSlider.value = Math.min(360, parseInt(angleSlider.value) + 5);
+          updateAnglePreview();
+          break;
 
-      angleSlider.value = 0;
-      intensitySlider.value = 20;
-      samplesSlider.value = 15;
+        // Intensity: 2 (decrease) / 8 (increase)
+        case '2':
+        case 'ArrowDown':
+          intensitySlider.value = Math.max(1, parseInt(intensitySlider.value) - 5);
+          intensityValue.textContent = intensitySlider.value;
+          if (originalImage) generateBlurredImage();
+          break;
+        case '8':
+        case 'ArrowUp':
+          intensitySlider.value = Math.min(100, parseInt(intensitySlider.value) + 5);
+          intensityValue.textContent = intensitySlider.value;
+          if (originalImage) generateBlurredImage();
+          break;
 
-      updateAnglePreview();
-      intensityValue.textContent = '20';
-      samplesValue.textContent = '15';
+        // Samples: 7 (decrease) / 9 (increase)
+        case '7':
+          samplesSlider.value = Math.max(5, parseInt(samplesSlider.value) - 1);
+          samplesValue.textContent = samplesSlider.value;
+          if (originalImage) generateBlurredImage();
+          break;
+        case '9':
+          samplesSlider.value = Math.min(50, parseInt(samplesSlider.value) + 1);
+          samplesValue.textContent = samplesSlider.value;
+          if (originalImage) generateBlurredImage();
+          break;
+
+        // Brush size: - (decrease) / + (increase)
+        case '-':
+        case '_':
+          brushSizeSlider.value = Math.max(10, parseInt(brushSizeSlider.value) - 10);
+          brushSizeValue.textContent = brushSizeSlider.value;
+          updateBrushCursor();
+          break;
+        case '+':
+        case '=':
+          brushSizeSlider.value = Math.min(200, parseInt(brushSizeSlider.value) + 10);
+          brushSizeValue.textContent = brushSizeSlider.value;
+          updateBrushCursor();
+          break;
+
+        // Undo: Ctrl+Z
+        case 'z':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            undo();
+          }
+          break;
+      }
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      if (originalImage) {
+        updateCanvasScale();
+      }
     });
   </script>
 </body>
