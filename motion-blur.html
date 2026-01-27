@@ -181,10 +181,50 @@
       font-weight: 600;
     }
 
-    .control-group .shortcut {
-      font-size: 0.75rem;
+    .slider-with-input {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-with-input input[type="range"] {
+      flex: 1;
+    }
+
+    .number-input {
+      width: 70px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #00d2ff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+
+    .number-input::-webkit-outer-spin-button,
+    .number-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .number-input:focus {
+      border-color: #00d2ff;
+      box-shadow: 0 0 10px rgba(0, 210, 255, 0.3);
+    }
+
+    .number-input-unit {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .number-input-unit .unit {
       color: #8892b0;
-      margin-left: 5px;
+      font-size: 0.85rem;
     }
 
     input[type="range"] {
@@ -462,43 +502,45 @@
         <div class="control-section" id="brushControls">
           <h3>ブラシ設定</h3>
           <div class="control-group">
-            <label>
-              ブラシサイズ
-              <span class="shortcut">[+/-]</span>
-              <span class="value" id="brushSizeValue">50</span>
-            </label>
-            <input type="range" id="brushSizeSlider" min="10" max="200" value="50">
+            <label>ブラシサイズ</label>
+            <div class="slider-with-input">
+              <input type="range" id="brushSizeSlider" min="10" max="200" value="50">
+              <div class="number-input-unit">
+                <input type="number" id="brushSizeInput" class="number-input" min="10" max="200" value="50">
+                <span class="unit">px</span>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="control-section">
           <h3>ブラー設定</h3>
           <div class="control-group">
-            <label>
-              角度
-              <span class="shortcut">[4/6]</span>
-              <span class="value" id="angleValue">0°</span>
-            </label>
-            <input type="range" id="angleSlider" min="0" max="360" value="0">
+            <label>角度</label>
+            <div class="slider-with-input">
+              <input type="range" id="angleSlider" min="0" max="360" value="0">
+              <div class="number-input-unit">
+                <input type="number" id="angleInput" class="number-input" min="0" max="360" value="0">
+                <span class="unit">°</span>
+              </div>
+            </div>
             <div class="angle-preview" id="anglePreview"></div>
           </div>
 
           <div class="control-group">
-            <label>
-              強度
-              <span class="shortcut">[2/8]</span>
-              <span class="value" id="intensityValue">20</span>
-            </label>
-            <input type="range" id="intensitySlider" min="1" max="100" value="20">
+            <label>強度</label>
+            <div class="slider-with-input">
+              <input type="range" id="intensitySlider" min="1" max="100" value="20">
+              <input type="number" id="intensityInput" class="number-input" min="1" max="100" value="20">
+            </div>
           </div>
 
           <div class="control-group">
-            <label>
-              サンプル数
-              <span class="shortcut">[7/9]</span>
-              <span class="value" id="samplesValue">15</span>
-            </label>
-            <input type="range" id="samplesSlider" min="5" max="50" value="15">
+            <label>サンプル数</label>
+            <div class="slider-with-input">
+              <input type="range" id="samplesSlider" min="5" max="50" value="15">
+              <input type="number" id="samplesInput" class="number-input" min="5" max="50" value="15">
+            </div>
           </div>
         </div>
 
@@ -521,12 +563,9 @@
 
         <div class="control-section">
           <div class="keyboard-help">
-            <h4>キーボードショートカット</h4>
+            <h4>ヒント</h4>
             <ul>
-              <li><span>角度 ±5°</span> <kbd>4</kbd> / <kbd>6</kbd></li>
-              <li><span>強度 ±5</span> <kbd>2</kbd> / <kbd>8</kbd></li>
-              <li><span>サンプル ±1</span> <kbd>7</kbd> / <kbd>9</kbd></li>
-              <li><span>ブラシ ±10</span> <kbd>-</kbd> / <kbd>+</kbd></li>
+              <li><span>数値は直接入力可能</span></li>
               <li><span>元に戻す</span> <kbd>Ctrl+Z</kbd></li>
             </ul>
           </div>
@@ -554,17 +593,17 @@
     const brushControls = document.getElementById('brushControls');
 
     const brushSizeSlider = document.getElementById('brushSizeSlider');
-    const brushSizeValue = document.getElementById('brushSizeValue');
+    const brushSizeInput = document.getElementById('brushSizeInput');
 
     const angleSlider = document.getElementById('angleSlider');
-    const angleValue = document.getElementById('angleValue');
+    const angleInput = document.getElementById('angleInput');
     const anglePreview = document.getElementById('anglePreview');
 
     const intensitySlider = document.getElementById('intensitySlider');
-    const intensityValue = document.getElementById('intensityValue');
+    const intensityInput = document.getElementById('intensityInput');
 
     const samplesSlider = document.getElementById('samplesSlider');
-    const samplesValue = document.getElementById('samplesValue');
+    const samplesInput = document.getElementById('samplesInput');
 
     const formatSelect = document.getElementById('formatSelect');
 
@@ -704,10 +743,37 @@
       blurredCtx.globalAlpha = 1;
     }
 
+    // Sync slider and input helper
+    function syncSliderAndInput(slider, input, callback) {
+      slider.addEventListener('input', () => {
+        input.value = slider.value;
+        if (callback) callback();
+      });
+
+      input.addEventListener('input', () => {
+        let val = parseInt(input.value);
+        const min = parseInt(slider.min);
+        const max = parseInt(slider.max);
+        if (isNaN(val)) val = min;
+        val = Math.max(min, Math.min(max, val));
+        slider.value = val;
+        if (callback) callback();
+      });
+
+      input.addEventListener('blur', () => {
+        let val = parseInt(input.value);
+        const min = parseInt(slider.min);
+        const max = parseInt(slider.max);
+        if (isNaN(val)) val = min;
+        val = Math.max(min, Math.min(max, val));
+        input.value = val;
+        slider.value = val;
+      });
+    }
+
     // Update angle preview
     function updateAnglePreview() {
       const angle = angleSlider.value;
-      angleValue.textContent = angle + '°';
 
       const styleSheet = document.styleSheets[0];
       for (let i = 0; i < styleSheet.cssRules.length; i++) {
@@ -723,27 +789,17 @@
       }
     }
 
-    angleSlider.addEventListener('input', updateAnglePreview);
+    // Setup slider-input sync
+    syncSliderAndInput(angleSlider, angleInput, updateAnglePreview);
+    syncSliderAndInput(intensitySlider, intensityInput, () => {
+      if (originalImage) generateBlurredImage();
+    });
+    syncSliderAndInput(samplesSlider, samplesInput, () => {
+      if (originalImage) generateBlurredImage();
+    });
+    syncSliderAndInput(brushSizeSlider, brushSizeInput, updateBrushCursor);
+
     updateAnglePreview();
-
-    intensitySlider.addEventListener('input', () => {
-      intensityValue.textContent = intensitySlider.value;
-      if (originalImage) {
-        generateBlurredImage();
-      }
-    });
-
-    samplesSlider.addEventListener('input', () => {
-      samplesValue.textContent = samplesSlider.value;
-      if (originalImage) {
-        generateBlurredImage();
-      }
-    });
-
-    brushSizeSlider.addEventListener('input', () => {
-      brushSizeValue.textContent = brushSizeSlider.value;
-      updateBrushCursor();
-    });
 
     // Mode toggle
     brushModeBtn.addEventListener('click', () => {
@@ -897,74 +953,11 @@
       undoBtn.disabled = true;
     });
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts (Ctrl+Z for undo)
     document.addEventListener('keydown', (e) => {
-      // Ignore if focused on input
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-
-      const key = e.key;
-
-      // Numpad and number keys
-      switch (key) {
-        // Angle: 4 (decrease) / 6 (increase)
-        case '4':
-        case 'ArrowLeft':
-          angleSlider.value = Math.max(0, parseInt(angleSlider.value) - 5);
-          updateAnglePreview();
-          break;
-        case '6':
-        case 'ArrowRight':
-          angleSlider.value = Math.min(360, parseInt(angleSlider.value) + 5);
-          updateAnglePreview();
-          break;
-
-        // Intensity: 2 (decrease) / 8 (increase)
-        case '2':
-        case 'ArrowDown':
-          intensitySlider.value = Math.max(1, parseInt(intensitySlider.value) - 5);
-          intensityValue.textContent = intensitySlider.value;
-          if (originalImage) generateBlurredImage();
-          break;
-        case '8':
-        case 'ArrowUp':
-          intensitySlider.value = Math.min(100, parseInt(intensitySlider.value) + 5);
-          intensityValue.textContent = intensitySlider.value;
-          if (originalImage) generateBlurredImage();
-          break;
-
-        // Samples: 7 (decrease) / 9 (increase)
-        case '7':
-          samplesSlider.value = Math.max(5, parseInt(samplesSlider.value) - 1);
-          samplesValue.textContent = samplesSlider.value;
-          if (originalImage) generateBlurredImage();
-          break;
-        case '9':
-          samplesSlider.value = Math.min(50, parseInt(samplesSlider.value) + 1);
-          samplesValue.textContent = samplesSlider.value;
-          if (originalImage) generateBlurredImage();
-          break;
-
-        // Brush size: - (decrease) / + (increase)
-        case '-':
-        case '_':
-          brushSizeSlider.value = Math.max(10, parseInt(brushSizeSlider.value) - 10);
-          brushSizeValue.textContent = brushSizeSlider.value;
-          updateBrushCursor();
-          break;
-        case '+':
-        case '=':
-          brushSizeSlider.value = Math.min(200, parseInt(brushSizeSlider.value) + 10);
-          brushSizeValue.textContent = brushSizeSlider.value;
-          updateBrushCursor();
-          break;
-
-        // Undo: Ctrl+Z
-        case 'z':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            undo();
-          }
-          break;
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        undo();
       }
     });
 
