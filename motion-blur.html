@@ -302,8 +302,43 @@
 
     .effect-select {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 8px;
+    }
+
+    .color-select {
+      display: flex;
+      gap: 10px;
+    }
+
+    .color-btn {
+      flex: 1;
+      padding: 15px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .color-btn.white {
+      background: #ffffff;
+      color: #333;
+    }
+
+    .color-btn.black {
+      background: #000000;
+      color: #fff;
+    }
+
+    .color-btn:hover {
+      border-color: rgba(0, 210, 255, 0.5);
+    }
+
+    .color-btn.active {
+      border-color: #00d2ff;
+      box-shadow: 0 0 15px rgba(0, 210, 255, 0.5);
     }
 
     .effect-btn {
@@ -542,6 +577,10 @@
               <span class="icon">🌀</span>
               渦巻き
             </button>
+            <button class="effect-btn" data-effect="color">
+              <span class="icon">🎨</span>
+              カラー
+            </button>
           </div>
         </div>
 
@@ -639,6 +678,18 @@
           </div>
         </div>
 
+        <!-- Color Parameters -->
+        <div class="control-section effect-params" id="colorParams">
+          <h3>カラー設定</h3>
+          <div class="control-group">
+            <label>塗りつぶし色</label>
+            <div class="color-select">
+              <button class="color-btn white active" data-color="white">白</button>
+              <button class="color-btn black" data-color="black">黒</button>
+            </div>
+          </div>
+        </div>
+
         <div class="control-section">
           <h3>出力</h3>
           <div class="control-group">
@@ -709,6 +760,10 @@
     const twirlRadiusSlider = document.getElementById('twirlRadiusSlider');
     const twirlRadiusInput = document.getElementById('twirlRadiusInput');
 
+    // Color params
+    const colorBtns = document.querySelectorAll('.color-btn');
+    let selectedColor = 'white';
+
     const formatSelect = document.getElementById('formatSelect');
     const applyBtn = document.getElementById('applyBtn');
     const downloadBtn = document.getElementById('downloadBtn');
@@ -744,6 +799,18 @@
 
         // Regenerate effect canvas
         if (originalImage) {
+          generateEffectImage();
+        }
+      });
+    });
+
+    // Color selection
+    colorBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        colorBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedColor = btn.dataset.color;
+        if (originalImage && currentEffect === 'color') {
           generateEffectImage();
         }
       });
@@ -833,6 +900,9 @@
           break;
         case 'twirl':
           generateTwirl();
+          break;
+        case 'color':
+          generateColor();
           break;
       }
     }
@@ -989,6 +1059,15 @@
       effectCtx.putImageData(dstData, 0, 0);
     }
 
+    function generateColor() {
+      const effectCtx = effectCanvas.getContext('2d');
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      effectCtx.fillStyle = selectedColor === 'white' ? '#ffffff' : '#000000';
+      effectCtx.fillRect(0, 0, width, height);
+    }
+
     // Sync slider and input helper
     function syncSliderAndInput(slider, input, callback) {
       slider.addEventListener('input', () => {
@@ -1133,6 +1212,14 @@
       if (currentEffect === 'twirl') {
         // For twirl, apply centered at brush position
         applyTwirlAtPoint(x, y, radius);
+      } else if (currentEffect === 'color') {
+        // For color, fill circle with selected color
+        ctx.save();
+        ctx.fillStyle = selectedColor === 'white' ? '#ffffff' : '#000000';
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       } else {
         // For blur and mosaic, use clipping
         ctx.save();
@@ -1252,6 +1339,10 @@
           const cy = previewCanvas.height / 2;
           const radius = parseFloat(twirlRadiusSlider.value);
           applyTwirlAtPoint(cx, cy, radius);
+        } else if (currentEffect === 'color') {
+          // Fill entire canvas with color
+          ctx.fillStyle = selectedColor === 'white' ? '#ffffff' : '#000000';
+          ctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
         } else {
           ctx.drawImage(effectCanvas, 0, 0);
         }
