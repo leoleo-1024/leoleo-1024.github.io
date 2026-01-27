@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Motion Blur - 画像にモーションブラーをかける</title>
+  <title>Image Effects - 画像エフェクトツール</title>
   <style>
     * {
       box-sizing: border-box;
@@ -175,12 +175,6 @@
       font-size: 0.95rem;
     }
 
-    .control-group .value {
-      float: right;
-      color: #00d2ff;
-      font-weight: 600;
-    }
-
     .slider-with-input {
       display: flex;
       align-items: center;
@@ -304,6 +298,48 @@
       border-color: #00d2ff;
       background: rgba(0, 210, 255, 0.2);
       color: #00d2ff;
+    }
+
+    .effect-select {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .effect-btn {
+      padding: 12px 8px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: transparent;
+      color: #ccd6f6;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-align: center;
+    }
+
+    .effect-btn:hover {
+      border-color: rgba(0, 210, 255, 0.5);
+    }
+
+    .effect-btn.active {
+      border-color: #00d2ff;
+      background: rgba(0, 210, 255, 0.2);
+      color: #00d2ff;
+    }
+
+    .effect-btn .icon {
+      font-size: 1.5rem;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .effect-params {
+      display: none;
+    }
+
+    .effect-params.active {
+      display: block;
     }
 
     .btn {
@@ -466,8 +502,8 @@
 <body>
   <div class="container">
     <header>
-      <h1>Motion Blur</h1>
-      <p>画像にモーションブラー効果を適用できます</p>
+      <h1>Image Effects</h1>
+      <p>画像にさまざまなエフェクトを適用できます</p>
     </header>
 
     <div class="main-content">
@@ -487,10 +523,28 @@
           <div class="spinner"></div>
           <p>処理中...</p>
         </div>
-        <div class="status-bar" id="statusBar">ブラシモード: ドラッグでブラーを適用</div>
+        <div class="status-bar" id="statusBar">ブラシモード: ドラッグでエフェクトを適用</div>
       </div>
 
       <div class="controls">
+        <div class="control-section">
+          <h3>エフェクト選択</h3>
+          <div class="effect-select">
+            <button class="effect-btn active" data-effect="blur">
+              <span class="icon">💨</span>
+              ブラー
+            </button>
+            <button class="effect-btn" data-effect="mosaic">
+              <span class="icon">🔲</span>
+              モザイク
+            </button>
+            <button class="effect-btn" data-effect="twirl">
+              <span class="icon">🌀</span>
+              渦巻き
+            </button>
+          </div>
+        </div>
+
         <div class="control-section">
           <h3>モード選択</h3>
           <div class="mode-toggle">
@@ -513,7 +567,8 @@
           </div>
         </div>
 
-        <div class="control-section">
+        <!-- Motion Blur Parameters -->
+        <div class="control-section effect-params active" id="blurParams">
           <h3>ブラー設定</h3>
           <div class="control-group">
             <label>角度</label>
@@ -530,8 +585,8 @@
           <div class="control-group">
             <label>強度</label>
             <div class="slider-with-input">
-              <input type="range" id="intensitySlider" min="1" max="100" value="20">
-              <input type="number" id="intensityInput" class="number-input" min="1" max="100" value="20">
+              <input type="range" id="blurIntensitySlider" min="1" max="100" value="20">
+              <input type="number" id="blurIntensityInput" class="number-input" min="1" max="100" value="20">
             </div>
           </div>
 
@@ -540,6 +595,46 @@
             <div class="slider-with-input">
               <input type="range" id="samplesSlider" min="5" max="50" value="15">
               <input type="number" id="samplesInput" class="number-input" min="5" max="50" value="15">
+            </div>
+          </div>
+        </div>
+
+        <!-- Mosaic Parameters -->
+        <div class="control-section effect-params" id="mosaicParams">
+          <h3>モザイク設定</h3>
+          <div class="control-group">
+            <label>ブロックサイズ</label>
+            <div class="slider-with-input">
+              <input type="range" id="mosaicSizeSlider" min="2" max="50" value="10">
+              <div class="number-input-unit">
+                <input type="number" id="mosaicSizeInput" class="number-input" min="2" max="50" value="10">
+                <span class="unit">px</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Twirl Parameters -->
+        <div class="control-section effect-params" id="twirlParams">
+          <h3>渦巻き設定</h3>
+          <div class="control-group">
+            <label>強度</label>
+            <div class="slider-with-input">
+              <input type="range" id="twirlStrengthSlider" min="-180" max="180" value="45">
+              <div class="number-input-unit">
+                <input type="number" id="twirlStrengthInput" class="number-input" min="-180" max="180" value="45">
+                <span class="unit">°</span>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>半径</label>
+            <div class="slider-with-input">
+              <input type="range" id="twirlRadiusSlider" min="10" max="300" value="100">
+              <div class="number-input-unit">
+                <input type="number" id="twirlRadiusInput" class="number-input" min="10" max="300" value="100">
+                <span class="unit">px</span>
+              </div>
             </div>
           </div>
         </div>
@@ -555,7 +650,7 @@
             </select>
           </div>
 
-          <button class="btn btn-primary" id="applyBtn" disabled>全体にブラーを適用</button>
+          <button class="btn btn-primary" id="applyBtn" disabled>全体にエフェクトを適用</button>
           <button class="btn btn-primary" id="downloadBtn" disabled>画像をダウンロード</button>
           <button class="btn btn-warning" id="undoBtn" disabled>元に戻す (Ctrl+Z)</button>
           <button class="btn btn-secondary" id="resetBtn">リセット</button>
@@ -595,37 +690,64 @@
     const brushSizeSlider = document.getElementById('brushSizeSlider');
     const brushSizeInput = document.getElementById('brushSizeInput');
 
+    // Blur params
     const angleSlider = document.getElementById('angleSlider');
     const angleInput = document.getElementById('angleInput');
     const anglePreview = document.getElementById('anglePreview');
-
-    const intensitySlider = document.getElementById('intensitySlider');
-    const intensityInput = document.getElementById('intensityInput');
-
+    const blurIntensitySlider = document.getElementById('blurIntensitySlider');
+    const blurIntensityInput = document.getElementById('blurIntensityInput');
     const samplesSlider = document.getElementById('samplesSlider');
     const samplesInput = document.getElementById('samplesInput');
 
-    const formatSelect = document.getElementById('formatSelect');
+    // Mosaic params
+    const mosaicSizeSlider = document.getElementById('mosaicSizeSlider');
+    const mosaicSizeInput = document.getElementById('mosaicSizeInput');
 
+    // Twirl params
+    const twirlStrengthSlider = document.getElementById('twirlStrengthSlider');
+    const twirlStrengthInput = document.getElementById('twirlStrengthInput');
+    const twirlRadiusSlider = document.getElementById('twirlRadiusSlider');
+    const twirlRadiusInput = document.getElementById('twirlRadiusInput');
+
+    const formatSelect = document.getElementById('formatSelect');
     const applyBtn = document.getElementById('applyBtn');
     const downloadBtn = document.getElementById('downloadBtn');
     const undoBtn = document.getElementById('undoBtn');
     const resetBtn = document.getElementById('resetBtn');
 
+    // Effect buttons
+    const effectBtns = document.querySelectorAll('.effect-btn');
+
     // State
     let originalImage = null;
-    let currentImageData = null;
-    let blurredImageData = null;
     let historyStack = [];
     const MAX_HISTORY = 20;
     let isBrushMode = true;
     let isDrawing = false;
     let canvasScale = 1;
+    let currentEffect = 'blur';
 
     // Offscreen canvases
     let originalCanvas = null;
-    let blurredCanvas = null;
-    let workingCanvas = null;
+    let effectCanvas = null;
+
+    // Effect selection
+    effectBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        effectBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentEffect = btn.dataset.effect;
+
+        // Show/hide params
+        document.querySelectorAll('.effect-params').forEach(p => p.classList.remove('active'));
+        document.getElementById(`${currentEffect}Params`).classList.add('active');
+
+        // Regenerate effect canvas
+        if (originalImage) {
+          generateEffectImage();
+        }
+      });
+    });
 
     // Event Listeners for file upload
     dropZone.addEventListener('click', () => fileInput.click());
@@ -662,46 +784,30 @@
         img.onload = () => {
           originalImage = img;
 
-          // Set canvas size
           previewCanvas.width = img.width;
           previewCanvas.height = img.height;
 
-          // Create offscreen canvases
           originalCanvas = document.createElement('canvas');
           originalCanvas.width = img.width;
           originalCanvas.height = img.height;
           originalCanvas.getContext('2d').drawImage(img, 0, 0);
 
-          blurredCanvas = document.createElement('canvas');
-          blurredCanvas.width = img.width;
-          blurredCanvas.height = img.height;
+          effectCanvas = document.createElement('canvas');
+          effectCanvas.width = img.width;
+          effectCanvas.height = img.height;
 
-          workingCanvas = document.createElement('canvas');
-          workingCanvas.width = img.width;
-          workingCanvas.height = img.height;
-
-          // Generate blurred version
-          generateBlurredImage();
-
-          // Draw original image
+          generateEffectImage();
           ctx.drawImage(img, 0, 0);
-
-          // Calculate scale for brush cursor
           updateCanvasScale();
 
-          // Show canvas, hide drop zone
           dropZone.classList.add('hidden');
           previewCanvas.classList.remove('hidden');
 
-          // Enable buttons
           applyBtn.disabled = false;
           downloadBtn.disabled = false;
-
-          // Clear history
           historyStack = [];
           undoBtn.disabled = true;
 
-          // Show status bar in brush mode
           if (isBrushMode) {
             statusBar.classList.add('visible');
           }
@@ -716,31 +822,171 @@
       canvasScale = previewCanvas.width / rect.width;
     }
 
-    function generateBlurredImage() {
-      const blurredCtx = blurredCanvas.getContext('2d');
+    // Generate effect image based on current effect
+    function generateEffectImage() {
+      switch (currentEffect) {
+        case 'blur':
+          generateMotionBlur();
+          break;
+        case 'mosaic':
+          generateMosaic();
+          break;
+        case 'twirl':
+          generateTwirl();
+          break;
+      }
+    }
+
+    function generateMotionBlur() {
+      const effectCtx = effectCanvas.getContext('2d');
       const angle = parseFloat(angleSlider.value);
-      const intensity = parseFloat(intensitySlider.value);
+      const intensity = parseFloat(blurIntensitySlider.value);
       const samples = parseInt(samplesSlider.value);
 
       const width = originalImage.width;
       const height = originalImage.height;
 
-      blurredCtx.clearRect(0, 0, width, height);
+      effectCtx.clearRect(0, 0, width, height);
 
       const radians = (angle * Math.PI) / 180;
       const dx = Math.cos(radians);
       const dy = Math.sin(radians);
 
-      blurredCtx.globalAlpha = 1 / samples;
+      effectCtx.globalAlpha = 1 / samples;
 
       for (let i = 0; i < samples; i++) {
         const offset = (i - samples / 2) * (intensity / samples);
         const offsetX = dx * offset;
         const offsetY = dy * offset;
-        blurredCtx.drawImage(originalImage, offsetX, offsetY);
+        effectCtx.drawImage(originalImage, offsetX, offsetY);
       }
 
-      blurredCtx.globalAlpha = 1;
+      effectCtx.globalAlpha = 1;
+    }
+
+    function generateMosaic() {
+      const effectCtx = effectCanvas.getContext('2d');
+      const blockSize = parseInt(mosaicSizeSlider.value);
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      // Draw original first
+      effectCtx.drawImage(originalImage, 0, 0);
+      const imageData = effectCtx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+
+      for (let y = 0; y < height; y += blockSize) {
+        for (let x = 0; x < width; x += blockSize) {
+          let r = 0, g = 0, b = 0, count = 0;
+
+          // Calculate average color in block
+          for (let by = 0; by < blockSize && y + by < height; by++) {
+            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
+              const idx = ((y + by) * width + (x + bx)) * 4;
+              r += data[idx];
+              g += data[idx + 1];
+              b += data[idx + 2];
+              count++;
+            }
+          }
+
+          r = Math.round(r / count);
+          g = Math.round(g / count);
+          b = Math.round(b / count);
+
+          // Fill block with average color
+          for (let by = 0; by < blockSize && y + by < height; by++) {
+            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
+              const idx = ((y + by) * width + (x + bx)) * 4;
+              data[idx] = r;
+              data[idx + 1] = g;
+              data[idx + 2] = b;
+            }
+          }
+        }
+      }
+
+      effectCtx.putImageData(imageData, 0, 0);
+    }
+
+    function generateTwirl() {
+      const effectCtx = effectCanvas.getContext('2d');
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      // Get original image data
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(originalImage, 0, 0);
+      const srcData = tempCtx.getImageData(0, 0, width, height);
+      const src = srcData.data;
+
+      const dstData = effectCtx.createImageData(width, height);
+      const dst = dstData.data;
+
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = parseFloat(twirlRadiusSlider.value);
+      const strength = parseFloat(twirlStrengthSlider.value) * Math.PI / 180;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const dx = x - centerX;
+          const dy = y - centerY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          let srcX, srcY;
+
+          if (dist < radius) {
+            const amount = (radius - dist) / radius;
+            const angle = amount * amount * strength;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            srcX = centerX + dx * cos - dy * sin;
+            srcY = centerY + dx * sin + dy * cos;
+          } else {
+            srcX = x;
+            srcY = y;
+          }
+
+          // Bilinear interpolation
+          const x0 = Math.floor(srcX);
+          const y0 = Math.floor(srcY);
+          const x1 = x0 + 1;
+          const y1 = y0 + 1;
+
+          const xWeight = srcX - x0;
+          const yWeight = srcY - y0;
+
+          const dstIdx = (y * width + x) * 4;
+
+          if (x0 >= 0 && x1 < width && y0 >= 0 && y1 < height) {
+            const idx00 = (y0 * width + x0) * 4;
+            const idx10 = (y0 * width + x1) * 4;
+            const idx01 = (y1 * width + x0) * 4;
+            const idx11 = (y1 * width + x1) * 4;
+
+            for (let c = 0; c < 4; c++) {
+              const top = src[idx00 + c] * (1 - xWeight) + src[idx10 + c] * xWeight;
+              const bottom = src[idx01 + c] * (1 - xWeight) + src[idx11 + c] * xWeight;
+              dst[dstIdx + c] = Math.round(top * (1 - yWeight) + bottom * yWeight);
+            }
+          } else {
+            // Edge case: use nearest neighbor
+            const clampX = Math.max(0, Math.min(width - 1, Math.round(srcX)));
+            const clampY = Math.max(0, Math.min(height - 1, Math.round(srcY)));
+            const srcIdx = (clampY * width + clampX) * 4;
+            for (let c = 0; c < 4; c++) {
+              dst[dstIdx + c] = src[srcIdx + c];
+            }
+          }
+        }
+      }
+
+      effectCtx.putImageData(dstData, 0, 0);
     }
 
     // Sync slider and input helper
@@ -783,19 +1029,27 @@
         }
       }
 
-      // Regenerate blurred image when angle changes
-      if (originalImage) {
-        generateBlurredImage();
+      if (originalImage && currentEffect === 'blur') {
+        generateEffectImage();
       }
     }
 
     // Setup slider-input sync
     syncSliderAndInput(angleSlider, angleInput, updateAnglePreview);
-    syncSliderAndInput(intensitySlider, intensityInput, () => {
-      if (originalImage) generateBlurredImage();
+    syncSliderAndInput(blurIntensitySlider, blurIntensityInput, () => {
+      if (originalImage && currentEffect === 'blur') generateEffectImage();
     });
     syncSliderAndInput(samplesSlider, samplesInput, () => {
-      if (originalImage) generateBlurredImage();
+      if (originalImage && currentEffect === 'blur') generateEffectImage();
+    });
+    syncSliderAndInput(mosaicSizeSlider, mosaicSizeInput, () => {
+      if (originalImage && currentEffect === 'mosaic') generateEffectImage();
+    });
+    syncSliderAndInput(twirlStrengthSlider, twirlStrengthInput, () => {
+      if (originalImage && currentEffect === 'twirl') generateEffectImage();
+    });
+    syncSliderAndInput(twirlRadiusSlider, twirlRadiusInput, () => {
+      if (originalImage && currentEffect === 'twirl') generateEffectImage();
     });
     syncSliderAndInput(brushSizeSlider, brushSizeInput, updateBrushCursor);
 
@@ -807,7 +1061,6 @@
       brushModeBtn.classList.add('active');
       fullModeBtn.classList.remove('active');
       brushControls.style.display = 'block';
-      applyBtn.textContent = '全体にブラーを適用';
       if (originalImage) {
         statusBar.classList.add('visible');
       }
@@ -818,7 +1071,6 @@
       fullModeBtn.classList.add('active');
       brushModeBtn.classList.remove('active');
       brushControls.style.display = 'none';
-      applyBtn.textContent = '全体にブラーを適用';
       statusBar.classList.remove('visible');
       brushCursor.style.display = 'none';
     });
@@ -859,9 +1111,7 @@
     previewCanvas.addEventListener('mousedown', (e) => {
       if (!isBrushMode || !originalImage) return;
 
-      // Save state for undo
       saveToHistory();
-
       isDrawing = true;
       applyBrushAt(e);
     });
@@ -880,16 +1130,86 @@
       const y = (e.clientY - rect.top) * canvasScale;
       const radius = parseInt(brushSizeSlider.value) / 2;
 
-      // Use clipping to apply blur only in brush area
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.clip();
+      if (currentEffect === 'twirl') {
+        // For twirl, apply centered at brush position
+        applyTwirlAtPoint(x, y, radius);
+      } else {
+        // For blur and mosaic, use clipping
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(effectCanvas, 0, 0);
+        ctx.restore();
+      }
+    }
 
-      // Draw the blurred image in the clipped area
-      ctx.drawImage(blurredCanvas, 0, 0);
+    function applyTwirlAtPoint(cx, cy, radius) {
+      const width = previewCanvas.width;
+      const height = previewCanvas.height;
 
-      ctx.restore();
+      // Get current canvas data
+      const srcData = ctx.getImageData(0, 0, width, height);
+      const src = srcData.data;
+
+      // Create destination for the affected area
+      const dstData = ctx.createImageData(width, height);
+      const dst = dstData.data;
+
+      // Copy original data
+      for (let i = 0; i < src.length; i++) {
+        dst[i] = src[i];
+      }
+
+      const strength = parseFloat(twirlStrengthSlider.value) * Math.PI / 180;
+
+      const minX = Math.max(0, Math.floor(cx - radius));
+      const maxX = Math.min(width, Math.ceil(cx + radius));
+      const minY = Math.max(0, Math.floor(cy - radius));
+      const maxY = Math.min(height, Math.ceil(cy + radius));
+
+      for (let y = minY; y < maxY; y++) {
+        for (let x = minX; x < maxX; x++) {
+          const dx = x - cx;
+          const dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < radius) {
+            const amount = (radius - dist) / radius;
+            const angle = amount * amount * strength;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            const srcX = cx + dx * cos - dy * sin;
+            const srcY = cy + dx * sin + dy * cos;
+
+            const x0 = Math.floor(srcX);
+            const y0 = Math.floor(srcY);
+            const x1 = x0 + 1;
+            const y1 = y0 + 1;
+
+            const xWeight = srcX - x0;
+            const yWeight = srcY - y0;
+
+            const dstIdx = (y * width + x) * 4;
+
+            if (x0 >= 0 && x1 < width && y0 >= 0 && y1 < height) {
+              const idx00 = (y0 * width + x0) * 4;
+              const idx10 = (y0 * width + x1) * 4;
+              const idx01 = (y1 * width + x0) * 4;
+              const idx11 = (y1 * width + x1) * 4;
+
+              for (let c = 0; c < 4; c++) {
+                const top = src[idx00 + c] * (1 - xWeight) + src[idx10 + c] * xWeight;
+                const bottom = src[idx01 + c] * (1 - xWeight) + src[idx11 + c] * xWeight;
+                dst[dstIdx + c] = Math.round(top * (1 - yWeight) + bottom * yWeight);
+              }
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(dstData, 0, 0);
     }
 
     function saveToHistory() {
@@ -916,7 +1236,7 @@
 
     undoBtn.addEventListener('click', undo);
 
-    // Apply motion blur to entire image
+    // Apply effect to entire image
     applyBtn.addEventListener('click', () => {
       if (!originalImage) return;
 
@@ -926,7 +1246,15 @@
       applyBtn.disabled = true;
 
       setTimeout(() => {
-        ctx.drawImage(blurredCanvas, 0, 0);
+        if (currentEffect === 'twirl') {
+          // Apply twirl centered on image
+          const cx = previewCanvas.width / 2;
+          const cy = previewCanvas.height / 2;
+          const radius = parseFloat(twirlRadiusSlider.value);
+          applyTwirlAtPoint(cx, cy, radius);
+        } else {
+          ctx.drawImage(effectCanvas, 0, 0);
+        }
         processing.classList.remove('active');
         applyBtn.disabled = false;
       }, 50);
@@ -939,7 +1267,7 @@
       const format = formatSelect.value;
       const dataUrl = previewCanvas.toDataURL(`image/${format}`, 0.92);
       const link = document.createElement('a');
-      link.download = `motion-blur-image.${format}`;
+      link.download = `image-effect.${format}`;
       link.href = dataUrl;
       link.click();
     });
