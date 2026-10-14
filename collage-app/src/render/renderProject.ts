@@ -22,6 +22,16 @@ export interface RenderOptions {
   /** 透明背景を塗りつぶす色（JPEG 出力時など） */
   opaqueFallback?: string;
   onProgress?: (done: number, total: number) => void;
+  /** 中止用。画像 1 枚ごとに確認し、中止されていれば AbortError を投げる */
+  signal?: AbortSignal;
+}
+
+export function isAbortError(e: unknown): boolean {
+  return (e as { name?: string })?.name === 'AbortError';
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw new DOMException('書き出しを中止しました', 'AbortError');
 }
 
 export function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -165,6 +175,8 @@ export async function renderProject(
   resolve: ImageResolver,
   opts: RenderOptions = {},
 ): Promise<void> {
+  // 高解像度の canvas を確保する前に中止を確認する
+  throwIfAborted(opts.signal);
   const scale = opts.scale ?? 1;
   const width = Math.round(doc.canvasWidth * scale);
   const height = Math.round(doc.canvasHeight * scale);
@@ -197,6 +209,7 @@ export async function renderProject(
 
   for (let i = 0; i < layers.length; i++) {
     const layer = layers[i];
+    throwIfAborted(opts.signal);
     const r = await resolve(layer.assetId);
     if (r) {
       try {

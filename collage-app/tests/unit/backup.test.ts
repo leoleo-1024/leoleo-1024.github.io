@@ -10,6 +10,11 @@ import { BackupError, exportProjectBackup, importProjectBackup } from '../../src
 import type { ImageAsset } from '../../src/model/types';
 
 const bytes = (...n: number[]) => new Uint8Array(n);
+const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const JPEG_SIG = [0xff, 0xd8, 0xff, 0xe0];
+/** 画像シグネチャ付きのダミー画像データ */
+const png = (...n: number[]) => bytes(...PNG_SIG, ...n);
+const jpg = (...n: number[]) => bytes(...JPEG_SIG, ...n);
 
 describe('zip', () => {
   it('CRC32 が既知の値と一致する', () => {
@@ -67,7 +72,7 @@ describe('zip', () => {
 });
 
 function asset(id: string, projectId: string, content: number): ImageAsset {
-  const blob = new Blob([bytes(content, content, content)], { type: 'image/png' });
+  const blob = new Blob([png(content, content, content)], { type: 'image/png' });
   return {
     id,
     projectId,
@@ -77,8 +82,8 @@ function asset(id: string, projectId: string, content: number): ImageAsset {
     originalHeight: 300,
     width: 400,
     height: 300,
-    previewBlob: new Blob([bytes(content + 1)], { type: 'image/png' }),
-    thumbBlob: new Blob([bytes(content + 2)], { type: 'image/jpeg' }),
+    previewBlob: new Blob([png(content + 1)], { type: 'image/png' }),
+    thumbBlob: new Blob([jpg(content + 2)], { type: 'image/jpeg' }),
     name: `${id}.png`,
     createdAt: 1,
   };
@@ -99,7 +104,7 @@ describe('project backup', () => {
     ];
     p.background = { type: 'image', assetId: 'a3', fit: { zoom: 2, focusX: 0.3, focusY: 0.7 }, color: '#123456' };
     p.layoutMode = 'free';
-    await projectsRepo.put({ ...p, thumbnail: new Blob([bytes(7)], { type: 'image/jpeg' }) });
+    await projectsRepo.put({ ...p, thumbnail: new Blob([jpg(7)], { type: 'image/jpeg' }) });
     await assetsRepo.put(asset('a1', p.id, 10));
     await assetsRepo.put(asset('a2', p.id, 20));
     await assetsRepo.put(asset('a3', p.id, 30)); // 背景画像
@@ -133,12 +138,12 @@ describe('project backup', () => {
     if (restored.background.type === 'image') {
       expect(restored.background.fit).toEqual({ zoom: 2, focusX: 0.3, focusY: 0.7 });
       const bg = (await assetsRepo.get(restored.background.assetId))!;
-      expect(new Uint8Array(await bg.blob.arrayBuffer())).toEqual(bytes(30, 30, 30));
+      expect(new Uint8Array(await bg.blob.arrayBuffer())).toEqual(png(30, 30, 30));
     }
     const a = (await assetsRepo.get(l1.assetId))!;
     expect(a.projectId).toBe(r.projectId);
-    expect(new Uint8Array(await a.blob.arrayBuffer())).toEqual(bytes(10, 10, 10));
-    expect(new Uint8Array(await a.previewBlob.arrayBuffer())).toEqual(bytes(11));
+    expect(new Uint8Array(await a.blob.arrayBuffer())).toEqual(png(10, 10, 10));
+    expect(new Uint8Array(await a.previewBlob.arrayBuffer())).toEqual(png(11));
     expect(restored.thumbnail).toBeTruthy();
 
     // 元のプロジェクトは変更されない

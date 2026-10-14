@@ -57,6 +57,7 @@ export async function exportProject(
   format: ExportFormat,
   onProgress?: (done: number, total: number) => void,
   resolver: ImageResolver = masterResolver,
+  signal?: AbortSignal,
 ): Promise<ExportResult> {
   const canvas = document.createElement('canvas');
   const mime = MIME[format];
@@ -65,7 +66,9 @@ export async function exportProject(
       onProgress,
       // JPEG は透明を表現できないため、透明背景は黒で塗る
       opaqueFallback: format === 'jpeg' ? '#000000' : undefined,
+      signal,
     });
+    if (signal?.aborted) throw new DOMException('書き出しを中止しました', 'AbortError');
     const blob = await canvasToBlob(canvas, mime, format === 'jpeg' ? 0.95 : undefined);
     await verifyImageBlob(blob, mime, doc.canvasWidth, doc.canvasHeight);
     const file = new File([blob], exportFileName(name, format), { type: mime, lastModified: Date.now() });

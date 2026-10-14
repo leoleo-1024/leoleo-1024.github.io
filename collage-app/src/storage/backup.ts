@@ -1,9 +1,10 @@
 import { uid } from '../lib/id';
-import { createZip, openZip, ZipError, type ZipInput } from '../lib/zip';
+import { createZip, openZip, ZipError, type ZipInput, type ZipReader } from '../lib/zip';
 import { DEFAULT_FIT } from '../model/geometry';
 import { migrateProject } from '../model/project';
 import { SCHEMA_VERSION, type Background, type Fit, type ImageAsset, type ImageLayer, type Project } from '../model/types';
-import { db, toStorageError, type ProjectRecord } from './db';
+import { validateCanvasSize } from '../model/presets';
+import { db, StorageError, toStorageError, type ProjectRecord } from './db';
 
 /**
  * プロジェクトのバックアップ（1 つの .zip ファイル）。
@@ -172,118 +173,253 @@ function sanitizeBackground(b: unknown, assetMap: Map<string, string>): Backgrou
 export interface ImportResult {
   projectId: string;
   name: string;
+  /** 復元できた配置（レイヤー）の数 */
   imageCount: number;
+  /** 壊れていて復元できなかった画像の数と名前 */
   skipped: number;
+  skippedNames: string[];
+  /** 壊れた画像を使っていたため除外した配置の数 */
+  droppedLayers: number;
+}
+
+/** 復元の上限（壊れた・悪意のあるファイルからアプリを守る） */
+const MAX_ASSETS = 2000;
+const MAX_LAYERS = 5000;
+const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_SIDE = 100_000;
+
+/** 復元中であることを示す目印（settings テーブルに保存）。強制終了で残った場合は次回起動時に掃除する */
+const IMPORT_MARKER_PREFIX = 'import:';
+interface ImportMarker {
+  projectId: string;
+  startedAt: number;
+  updatedAt: number;
+}
+/** 目印の更新がこの時間止まっていたら、中断された復元とみなす（他のタブで進行中の復元は消さない） */
+export const INTERRUPTED_IMPORT_MS = 10 * 60 * 1000;
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** 画像ファイルの先頭バイト（シグネチャ）を確認する */
+async function looksLikeImage(blob: Blob): Promise<boolean> {
+  const h = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+  const jpeg = h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff;
+  const png = h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47;
+  const gif = h[0] === 0x47 && h[1] === 0x49 && h[2] === 0x46 && h[3] === 0x38;
+  const webp = h[0] === 0x52 && h[1] === 0x49 && h[2] === 0x46 && h[3] === 0x46 && h[8] === 0x57 && h[9] === 0x45 && h[10] === 0x42 && h[11] === 0x50;
+  return jpeg || png || gif || webp;
+}
+
+const invalid = (detail: string) => new BackupError(`バックアップファイルの内容が正しくありません（${detail}）。`);
+
+/** manifest.json の構造を検証する。不正なものは復元を始める前に拒否する */
+function validateManifest(m: unknown): Manifest {
+  if (!isObj(m) || m.format !== BACKUP_FORMAT || !isObj(m.project)) {
+    throw new BackupError('壁紙コラージュのバックアップファイルではありません。');
+  }
+  if (num(m.formatVersion, 0) > BACKUP_FORMAT_VERSION || num(m.project.schemaVersion, 0) > SCHEMA_VERSION) {
+    throw new BackupError('新しいバージョンのアプリで作成されたバックアップです。アプリを最新にしてから読み込んでください。');
+  }
+  const assets = m.assets ?? [];
+  if (!Array.isArray(assets)) throw invalid('画像一覧');
+  if (assets.length > MAX_ASSETS) throw invalid('画像が多すぎます');
+  const layers = m.project.imageLayers ?? [];
+  if (!Array.isArray(layers)) throw invalid('配置データ');
+  if (layers.length > MAX_LAYERS) throw invalid('配置が多すぎます');
+  const ids = new Set<string>();
+  for (const a of assets) {
+    if (!isObj(a) || typeof a.id !== 'string' || !a.id) throw invalid('画像のID');
+    if (ids.has(a.id)) throw invalid('画像のIDが重複しています');
+    ids.add(a.id);
+  }
+  const w = m.project.canvasWidth;
+  const h = m.project.canvasHeight;
+  if (typeof w !== 'number' || typeof h !== 'number' || validateCanvasSize(w, h)) throw invalid('壁紙のサイズ');
+  return m as unknown as Manifest;
+}
+
+/** 1 枚分の画像を読み込む。壊れている場合は null（呼び出し側で「復元できなかった画像」として数える） */
+async function readAsset(zip: ZipReader, a: ManifestAsset, projectId: string, now: number): Promise<ImageAsset | null> {
+  try {
+    const files = isObj(a.files) ? a.files : null;
+    if (!files || typeof files.original !== 'string' || typeof files.preview !== 'string' || typeof files.thumb !== 'string') return null;
+    const ow = num(a.originalWidth, 0);
+    const oh = num(a.originalHeight, 0);
+    if (ow <= 0 || oh <= 0 || ow > MAX_IMAGE_SIDE || oh > MAX_IMAGE_SIDE) return null;
+    const blob = await zip.read(files.original, str(a.mimeType, 'image/jpeg'));
+    const previewBlob = await zip.read(files.preview, str(a.types?.preview, 'image/jpeg'));
+    const thumbBlob = await zip.read(files.thumb, str(a.types?.thumb, 'image/jpeg'));
+    if (!(await looksLikeImage(blob)) || !(await looksLikeImage(previewBlob)) || !(await looksLikeImage(thumbBlob))) return null;
+    return {
+      id: uid(),
+      projectId,
+      blob,
+      mimeType: str(a.mimeType, 'image/jpeg'),
+      originalWidth: ow,
+      originalHeight: oh,
+      width: num(a.width, ow),
+      height: num(a.height, oh),
+      previewBlob,
+      thumbBlob,
+      name: str(a.name, 'image'),
+      createdAt: num(a.createdAt, now),
+    };
+  } catch (e) {
+    // ZIP 全体の上限超過は個別の破損ではないため、復元全体を中止する
+    if (e instanceof ZipError && /合計サイズ/.test(e.message)) throw e;
+    return null;
+  }
+}
+
+/** 指定した（復元途中の）プロジェクト ID の画像と目印を削除する。既存プロジェクトの ID が渡ることはない */
+async function discardImport(projectId: string) {
+  await db.assets.where('projectId').equals(projectId).delete();
+  await db.settings.delete(IMPORT_MARKER_PREFIX + projectId);
+}
+
+/**
+ * 強制終了などで中断された復元の残骸を掃除する（アプリ起動時に実行）。
+ * - 目印に対応するプロジェクトが存在する場合：復元は完了しているので目印だけ消す
+ * - 存在せず、目印の更新が一定時間止まっている場合：保存途中の画像と目印を消す
+ * 既存のプロジェクトとその画像には一切触れない。
+ */
+export async function cleanupInterruptedImports(now = Date.now()): Promise<number> {
+  let cleaned = 0;
+  try {
+    const markers = await db.settings.where('key').startsWith(IMPORT_MARKER_PREFIX).toArray();
+    for (const m of markers) {
+      const marker = m.value as Partial<ImportMarker> | undefined;
+      const projectId = m.key.slice(IMPORT_MARKER_PREFIX.length);
+      if (!projectId) continue;
+      if (await db.projects.get(projectId)) {
+        await db.settings.delete(m.key);
+        continue;
+      }
+      if (now - num(marker?.updatedAt, 0) < INTERRUPTED_IMPORT_MS) continue;
+      await discardImport(projectId);
+      cleaned++;
+    }
+  } catch {
+    /* 次回起動時に再試行される */
+  }
+  return cleaned;
 }
 
 /** バックアップファイルから新しいプロジェクトとして復元する（既存データは変更しない） */
 export async function importProjectBackup(file: Blob, onProgress?: (done: number, total: number) => void): Promise<ImportResult> {
   let manifest: Manifest;
-  let zip;
+  let zip: ZipReader;
   try {
     zip = await openZip(file);
     if (!zip.entries.has('manifest.json')) throw new BackupError('壁紙コラージュのバックアップファイルではありません。');
-    manifest = JSON.parse(await zip.readText('manifest.json')) as Manifest;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await zip.readText('manifest.json', MAX_MANIFEST_BYTES));
+    } catch (e) {
+      if (e instanceof ZipError) throw e;
+      throw invalid('manifest.json を解析できません');
+    }
+    manifest = validateManifest(parsed);
   } catch (e) {
     if (e instanceof BackupError) throw e;
     if (e instanceof ZipError) throw new BackupError(`バックアップファイルを読み込めませんでした（${e.message}）。`);
     throw new BackupError('バックアップファイルを読み込めませんでした。ファイルが壊れている可能性があります。');
   }
-  if (manifest?.format !== BACKUP_FORMAT || !manifest.project) {
-    throw new BackupError('壁紙コラージュのバックアップファイルではありません。');
-  }
-  if (num(manifest.formatVersion, 0) > BACKUP_FORMAT_VERSION || num(manifest.project.schemaVersion, 0) > SCHEMA_VERSION) {
-    throw new BackupError('新しいバージョンのアプリで作成されたバックアップです。アプリを最新にしてから読み込んでください。');
-  }
 
+  // 新しい ID で復元するため、既存のプロジェクトと衝突・上書きすることはない
   const projectId = uid();
   const now = Date.now();
+  const markerKey = IMPORT_MARKER_PREFIX + projectId;
+  const list = (manifest.assets ?? []) as ManifestAsset[];
   const assetMap = new Map<string, string>();
-  const savedAssetIds: string[] = [];
-  const list = Array.isArray(manifest.assets) ? manifest.assets : [];
-  let skipped = 0;
+  const skippedNames: string[] = [];
 
-  // 画像はメモリを圧迫しないよう 1 枚ずつ読み込んで保存し、失敗時はまとめて取り消す
-  const rollback = async () => {
-    await db.assets.bulkDelete(savedAssetIds).catch(() => {});
-  };
-
-  for (let i = 0; i < list.length; i++) {
-    const a = list[i];
-    let asset: ImageAsset;
-    try {
-      const newId = uid();
-      asset = {
-        id: newId,
-        projectId,
-        blob: await zip.read(a.files.original, str(a.mimeType, 'image/jpeg')),
-        mimeType: str(a.mimeType, 'image/jpeg'),
-        originalWidth: num(a.originalWidth, 1),
-        originalHeight: num(a.originalHeight, 1),
-        width: num(a.width, num(a.originalWidth, 1)),
-        height: num(a.height, num(a.originalHeight, 1)),
-        previewBlob: await zip.read(a.files.preview, str(a.types?.preview, 'image/jpeg')),
-        thumbBlob: await zip.read(a.files.thumb, str(a.types?.thumb, 'image/jpeg')),
-        name: str(a.name, 'image'),
-        createdAt: num(a.createdAt, now),
-      };
-    } catch {
-      // 壊れた画像は除外し、残りは復元する
-      skipped++;
-      onProgress?.(i + 1, list.length + 1);
-      continue;
-    }
-    try {
-      await db.assets.put(asset);
-    } catch (e) {
-      await rollback();
-      throw toStorageError(e);
-    }
-    savedAssetIds.push(asset.id);
-    assetMap.set(str(a.id, ''), asset.id);
-    onProgress?.(i + 1, list.length + 1);
-  }
-
-  const src = manifest.project;
-  const layers = (Array.isArray(src.imageLayers) ? src.imageLayers : [])
-    .map((l) => sanitizeLayer(l, assetMap))
-    .filter((l): l is ImageLayer => !!l)
-    .sort((a, b) => a.zIndex - b.zIndex)
-    .map((l, i) => ({ ...l, zIndex: i }));
-  const base = migrateProject({ ...src, schemaVersion: num(src.schemaVersion, SCHEMA_VERSION) });
-  const project: ProjectRecord = {
-    id: projectId,
-    name: str(base.name, '復元したプロジェクト'),
-    createdAt: num(base.createdAt, now),
-    updatedAt: now,
-    schemaVersion: SCHEMA_VERSION,
-    presetId: str(base.presetId, 'custom'),
-    canvasWidth: num(base.canvasWidth, 1179),
-    canvasHeight: num(base.canvasHeight, 2556),
-    background: sanitizeBackground(base.background, assetMap),
-    layoutMode: base.layoutMode === 'grid' || base.layoutMode === 'mosaic' ? base.layoutMode : 'free',
-    grid: {
-      auto: bool(base.grid?.auto, true),
-      rows: Math.max(1, Math.round(num(base.grid?.rows, 3))),
-      cols: Math.max(1, Math.round(num(base.grid?.cols, 2))),
-      gap: num(base.grid?.gap, 24),
-      padding: num(base.grid?.padding, 48),
-    },
-    mosaic: { seed: num(base.mosaic?.seed, 1), gap: num(base.mosaic?.gap, 24), padding: num(base.mosaic?.padding, 48) },
-    assetIds: (Array.isArray(base.assetIds) ? base.assetIds : []).map((id) => assetMap.get(id)).filter((id): id is string => !!id),
-    imageLayers: layers,
-  };
-  if (manifest.thumbnail && zip.entries.has(manifest.thumbnail)) {
-    project.thumbnail = await zip.read(manifest.thumbnail, 'image/jpeg').catch(() => undefined);
+  try {
+    await db.settings.put({ key: markerKey, value: { projectId, startedAt: now, updatedAt: now } satisfies ImportMarker });
+  } catch (e) {
+    throw toStorageError(e);
   }
 
   try {
-    // 編集データは最後に保存する。これが失敗した場合は画像も取り消し、中途半端なデータを残さない
-    await db.projects.put(project);
+    // 画像はメモリを圧迫しないよう 1 枚ずつ読み込んで保存する
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      const asset = await readAsset(zip, a, projectId, now);
+      if (!asset) {
+        skippedNames.push(str(a.name, `画像${i + 1}`));
+      } else {
+        try {
+          await db.assets.put(asset);
+          await db.settings.put({ key: markerKey, value: { projectId, startedAt: now, updatedAt: Date.now() } satisfies ImportMarker });
+        } catch (e) {
+          throw toStorageError(e);
+        }
+        assetMap.set(a.id, asset.id);
+      }
+      onProgress?.(i + 1, list.length + 1);
+    }
+    if (list.length > 0 && assetMap.size === 0) {
+      throw new BackupError('画像を1枚も復元できませんでした。バックアップファイルが壊れている可能性があります。');
+    }
+
+    const src = manifest.project;
+    const srcLayers = Array.isArray(src.imageLayers) ? src.imageLayers : [];
+    const layers = srcLayers
+      .map((l) => sanitizeLayer(l, assetMap))
+      .filter((l): l is ImageLayer => !!l)
+      .sort((a, b) => a.zIndex - b.zIndex)
+      .map((l, i) => ({ ...l, zIndex: i }));
+    const base = migrateProject({ ...src, schemaVersion: num(src.schemaVersion, SCHEMA_VERSION) });
+    const project: ProjectRecord = {
+      id: projectId,
+      name: str(base.name, '復元したプロジェクト'),
+      createdAt: num(base.createdAt, now),
+      updatedAt: now,
+      schemaVersion: SCHEMA_VERSION,
+      presetId: str(base.presetId, 'custom'),
+      canvasWidth: base.canvasWidth,
+      canvasHeight: base.canvasHeight,
+      background: sanitizeBackground(base.background, assetMap),
+      layoutMode: base.layoutMode === 'grid' || base.layoutMode === 'mosaic' ? base.layoutMode : 'free',
+      grid: {
+        auto: bool(base.grid?.auto, true),
+        rows: Math.min(12, Math.max(1, Math.round(num(base.grid?.rows, 3)))),
+        cols: Math.min(8, Math.max(1, Math.round(num(base.grid?.cols, 2)))),
+        gap: Math.max(0, num(base.grid?.gap, 24)),
+        padding: Math.max(0, num(base.grid?.padding, 48)),
+      },
+      mosaic: { seed: num(base.mosaic?.seed, 1), gap: Math.max(0, num(base.mosaic?.gap, 24)), padding: Math.max(0, num(base.mosaic?.padding, 48)) },
+      assetIds: (Array.isArray(base.assetIds) ? base.assetIds : []).map((id) => assetMap.get(id)).filter((id): id is string => !!id),
+      imageLayers: layers,
+    };
+    if (manifest.thumbnail && zip.entries.has(manifest.thumbnail)) {
+      const thumb = await zip.read(manifest.thumbnail, 'image/jpeg').catch(() => undefined);
+      if (thumb && (await looksLikeImage(thumb))) project.thumbnail = thumb;
+    }
+
+    // 編集データの保存と目印の削除を 1 つのトランザクションで行い、「完了」を確定させる
+    try {
+      await db.transaction('rw', db.projects, db.settings, async () => {
+        await db.projects.put(project);
+        await db.settings.delete(markerKey);
+      });
+    } catch (e) {
+      throw toStorageError(e);
+    }
+    onProgress?.(list.length + 1, list.length + 1);
+    return {
+      projectId,
+      name: project.name,
+      imageCount: layers.length,
+      skipped: skippedNames.length,
+      skippedNames,
+      droppedLayers: srcLayers.length - layers.length,
+    };
   } catch (e) {
-    await rollback();
-    throw toStorageError(e);
+    // どの段階で失敗しても、保存途中の画像と目印を取り消す（失敗した場合は次回起動時に掃除される）
+    await discardImport(projectId).catch(() => {});
+    if (e instanceof BackupError || e instanceof StorageError) throw e;
+    if (e instanceof ZipError) throw new BackupError(`バックアップファイルを読み込めませんでした（${e.message}）。`);
+    throw new BackupError('復元中にエラーが発生したため、復元を取り消しました。');
   }
-  onProgress?.(list.length + 1, list.length + 1);
-  return { projectId, name: project.name, imageCount: layers.length, skipped };
 }

@@ -398,6 +398,8 @@ test('プロジェクトをバックアップに書き出し、別のプロジ�
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^collage-backup-.*\.zip$/);
   const zipPath = await download.path();
+  // 標準の解凍ツールとの互換性確認用に保存しておく
+  await download.saveAs('test-results/backup-sample.zip');
 
   // 復元すると 2 つ目のプロジェクトとして追加される
   await page.getByTestId('backup-input').setInputFiles(zipPath);
@@ -429,4 +431,22 @@ test('壊れたバックアップファイルはエラー内容を表示し、�
   await page.getByTestId('backup-input').setInputFiles({ name: 'broken.zip', mimeType: 'application/zip', buffer: Buffer.from('this is not a zip') });
   await expect(page.getByRole('alert')).toContainText('バックアップファイルを読み込めませんでした');
   await expect(page.getByText('まだプロジェクトはありません')).toBeVisible();
+});
+
+test('PNG/JPEG を素早く切り替えても、最後に選んだ形式で正しく書き出される', async ({ page, fixtures }) => {
+  await createProjectWithImages(page, [fixtures['red-landscape.jpg'], fixtures['blue-portrait.png'], fixtures['green-square.webp']]);
+  await page.getByRole('button', { name: '保存・書き出し' }).click();
+  // 書き出し中（進捗表示中）でも素早いタップで切り替わる状況を再現するため、DOM に直接クリックを送る
+  for (const label of ['JPEG（軽量）', 'PNG（高画質）', 'JPEG（軽量）', 'PNG（高画質）', 'JPEG（軽量）']) {
+    await page.getByRole('tab', { name: label }).dispatchEvent('click');
+    await page.waitForTimeout(30);
+  }
+  await expect(page.getByTestId('export-result')).toContainText('JPEG', { timeout: 30_000 });
+  await expect(page.getByRole('tab', { name: 'JPEG（軽量）' })).toHaveAttribute('aria-selected', 'true');
+  await page.waitForTimeout(500); // 中止された書き出しの結果が後から上書きしないこと
+  await expect(page.getByTestId('export-result')).toContainText('JPEG');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByTestId('download-button').click();
+  const buf = await (await (await downloadPromise).createReadStream()).toArray().then((c) => Buffer.concat(c as Buffer[]));
+  expect([buf[0], buf[1], buf[2]]).toEqual([0xff, 0xd8, 0xff]);
 });

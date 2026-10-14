@@ -4,6 +4,7 @@ import { Button, Header, IconButton, ProgressOverlay, Segmented } from '../compo
 import { navigate } from '../lib/router';
 import { presetLabel } from '../model/presets';
 import { canShareFile, downloadFile, exportProject, shareFile, type ExportFormat, type ExportResult } from '../render/export';
+import { isAbortError } from '../render/renderProject';
 import { settingsRepo } from '../storage/db';
 import { useEditor } from '../state/editorStore';
 import { toast } from '../state/toast';
@@ -33,33 +34,48 @@ export function ExportScreen({ projectId }: { projectId: string }) {
 
   const transparentJpeg = format === 'jpeg' && doc.background.type === 'transparent';
 
-  // 実行のたびに番号を振り、古い実行の結果が後から表示されないようにする
-  const runId = useRef(0);
+  /**
+   * 書き出しは常に 1 件ずつ実行する。
+   * 新しい書き出しを始めると前の書き出しを中止（画像 1 枚ごとに中止を確認）し、
+   * 順番待ちの間に新しい要求が来た古い書き出しは、レンダリングせずに捨てる。
+   * これにより StrictMode の二重実行や形式の連続切り替えでも、高解像度レンダリングが並行しない。
+   */
+  const current = useRef<AbortController | null>(null);
+  const queue = useRef<Promise<void>>(Promise.resolve());
   const run = useCallback(
-    async (fmt: ExportFormat) => {
-      const id = ++runId.current;
+    (fmt: ExportFormat) => {
+      current.current?.abort();
+      const ctrl = new AbortController();
+      current.current = ctrl;
+      const { signal } = ctrl;
       setResult(null);
       setError(null);
       setSavedMsg(null);
       setProgress({ done: 0, total: doc.imageLayers.length + 1 });
-      try {
-        await useEditor.getState().flushSave();
-        const r = await exportProject(doc, project.name, fmt, (done, total) => id === runId.current && setProgress({ done, total }));
-        if (id === runId.current) setResult(r);
-      } catch (e) {
-        if (id !== runId.current) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(`書き出しに失敗しました：${msg}。画像の枚数を減らすか、他のアプリを終了してから再度お試しください。`);
-      } finally {
-        if (id === runId.current) setProgress(null);
-      }
+      queue.current = queue.current.then(async () => {
+        if (signal.aborted) return; // 順番待ちの間に新しい要求が来た／画面を離れた
+        try {
+          await useEditor.getState().flushSave();
+          const r = await exportProject(doc, project.name, fmt, (done, total) => !signal.aborted && setProgress({ done, total }), undefined, signal);
+          if (!signal.aborted) setResult(r);
+        } catch (e) {
+          if (signal.aborted || isAbortError(e)) return;
+          const msg = e instanceof Error ? e.message : String(e);
+          setError(`書き出しに失敗しました：${msg}。画像の枚数を減らすか、他のアプリを終了してから再度お試しください。`);
+        } finally {
+          if (!signal.aborted) setProgress(null);
+        }
+      });
     },
     [doc, project.name],
   );
 
-  // 画面を開いたとき・形式を変えたときに自動で書き出す（保存までのタップを減らす）
+  // 画面を開いたとき・形式を変えたときに自動で書き出す（保存までのタップを減らす）。
+  // 形式の変更・画面離脱時は実行中の書き出しを中止し、古い結果は表示しない
   useEffect(() => {
-    if (format) void run(format);
+    if (!format) return;
+    run(format);
+    return () => current.current?.abort();
   }, [format, run]);
 
   // 共有シートはタップ直後に同期的に呼ぶ必要があるため、書き出し済みのファイルを使う

@@ -47,7 +47,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 1200,
   },
   test: {
-    include: ['tests/unit/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
   },
 });

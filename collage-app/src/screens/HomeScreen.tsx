@@ -114,9 +114,16 @@ export function HomeScreen() {
     setProgress({ label: 'バックアップから復元中…', done: 0, total: 1 });
     try {
       const r = await importProjectBackup(file, (done, total) => setProgress({ label: 'バックアップから復元中…', done, total }));
-      toast.success(
-        r.skipped ? `「${r.name}」を復元しました（壊れていた画像${r.skipped}枚を除く）` : `「${r.name}」を復元しました（${r.imageCount}枚）`,
-      );
+      if (r.skipped) {
+        // 一部の画像が壊れていた場合は、何が復元されなかったかを明示する
+        const names = r.skippedNames.slice(0, 3).join('、') + (r.skippedNames.length > 3 ? ` ほか${r.skippedNames.length - 3}枚` : '');
+        toast.error(
+          `「${r.name}」を復元しましたが、壊れていた画像${r.skipped}枚（${names}）は復元できませんでした。` +
+            (r.droppedLayers ? `その画像を使った配置${r.droppedLayers}か所は除かれています。` : ''),
+        );
+      } else {
+        toast.success(`「${r.name}」を復元しました（${r.imageCount}枚）`);
+      }
       reload();
     } catch (e) {
       toast.error(e instanceof BackupError || e instanceof StorageError ? e.message : 'バックアップから復元できませんでした。');
