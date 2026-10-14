@@ -124,7 +124,7 @@ export function EditorScreen({ projectId }: { projectId: string }) {
       />
 
       <div className="relative min-h-0 flex-1 bg-[#0c0c0d]">
-        <CanvasStage onReady={(h) => (window.__collageStage = h)} />
+        <CanvasStage onReady={import.meta.env.VITE_E2E === '1' ? (h) => (window.__collageStage = h) : undefined} />
         {empty && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <p className="rounded-xl bg-black/60 px-4 py-2 text-[14px] text-white/80">下の「追加」から写真を追加</p>

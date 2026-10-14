@@ -1,11 +1,14 @@
 import { uid } from './id';
 import type { ImageAsset } from '../model/types';
+import { downscaleRegion } from '../render/resample';
 
 /** 書き出し用に保持する元画像の長辺上限（メモリ・保存容量の保護） */
 export const MASTER_MAX_SIDE = 4096;
 /** 編集画面で使う縮小画像の長辺 */
 export const PREVIEW_MAX_SIDE = 1024;
 export const THUMB_MAX_SIDE = 240;
+/** これを超えるファイルの読み込み失敗は「大きすぎる」可能性として案内する */
+const LARGE_FILE_BYTES = 25 * 1024 * 1024;
 
 export class ImageImportError extends Error {}
 
@@ -24,18 +27,34 @@ export async function loadImage(blob: Blob): Promise<LoadedImage> {
   const img = new Image();
   img.decoding = 'async';
   const release = () => {
+    img.onload = null;
+    img.onerror = null;
     img.src = '';
     URL.revokeObjectURL(url);
   };
+  // onload/onerror は src 設定前に登録する（キャッシュ済みで即座に読み込まれても取りこぼさない）
+  const loaded = new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('decode failed'));
+  });
+  // 待機しない経路でも「未処理の Promise 拒否」として扱われないようにする
+  loaded.catch(() => {});
   try {
     img.src = url;
     if (img.decode) {
-      await img.decode();
+      try {
+        await img.decode();
+      } catch (e) {
+        // Safari では大きな画像で decode() だけが失敗し、通常の読み込みは成功する場合があるため、
+        // load イベントの結果で最終判断する
+        if (!(img.complete && img.naturalWidth > 0)) {
+          await loaded.catch(() => {
+            throw e;
+          });
+        }
+      }
     } else {
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('decode failed'));
-      });
+      await loaded;
     }
     if (!img.naturalWidth || !img.naturalHeight) throw new Error('empty image');
     return { img, release };
@@ -62,14 +81,8 @@ function scaledSize(w: number, h: number, maxSide: number) {
 
 async function resizeTo(img: HTMLImageElement, maxSide: number, type: string, quality = 0.9) {
   const size = scaledSize(img.naturalWidth, img.naturalHeight, maxSide);
-  const canvas = document.createElement('canvas');
-  canvas.width = size.width;
-  canvas.height = size.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('canvas unavailable');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, size.width, size.height);
+  // 大きく縮小する場合（プレビュー・サムネイル）は段階縮小で画質を保つ
+  const canvas = downscaleRegion(img, 0, 0, img.naturalWidth, img.naturalHeight, size.width, size.height);
   try {
     const blob = await canvasToBlob(canvas, type, quality);
     return { blob, ...size };
@@ -103,6 +116,11 @@ export async function importImageFile(file: File, projectId: string): Promise<Im
     if (isHeic(file)) {
       throw new ImageImportError(
         `「${file.name}」はHEIC形式のため、このブラウザでは読み込めません。iPhoneのSafariで写真ライブラリから選ぶと自動でJPEGに変換されます。または「設定 > カメラ > フォーマット > 互換性優先」をお試しください。`,
+      );
+    }
+    if (file.size > LARGE_FILE_BYTES) {
+      throw new ImageImportError(
+        `「${file.name}」を読み込めませんでした。画像が大きすぎる（${Math.round(file.size / 1024 / 1024)}MB）可能性があります。他のアプリを終了してから再度お試しいただくか、写真を書き出し直して小さくしてください。`,
       );
     }
     throw new ImageImportError(`「${file.name}」を読み込めませんでした。ファイルが壊れているか、非対応の形式です。`);

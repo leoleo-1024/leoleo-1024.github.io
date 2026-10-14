@@ -15,7 +15,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 編集中に自動で再読み込みされないよう、更新の適用はアプリ側で制御する（src/lib/pwa.ts）
+      registerType: 'prompt',
       includeAssets: ['apple-touch-icon.png', 'favicon.svg'],
       manifest: {
         name: '壁紙コラージュ',

@@ -1,5 +1,6 @@
 import { coverCrop, degToRad } from '../model/geometry';
 import type { Background, ImageLayer, ProjectDoc } from '../model/types';
+import { downscaleRegion, STEP_DOWNSCALE_THRESHOLD } from './resample';
 
 /**
  * Canvas 2D による描画エンジン（書き出し・サムネイル生成用）。
@@ -59,6 +60,7 @@ export function drawBackground(
   width: number,
   height: number,
   bgImage: SourceImage | null,
+  pixelScale = 1,
 ) {
   if (bg.type === 'color') {
     ctx.fillStyle = bg.color;
@@ -75,8 +77,9 @@ export function drawBackground(
     ctx.fillRect(0, 0, width, height);
     if (bgImage) {
       const { crop } = coverCrop(bgImage, { width, height }, bg.fit);
-      ctx.drawImage(
-        bgImage.image,
+      drawCropped(
+        ctx,
+        bgImage,
         crop.x * bgImage.width,
         crop.y * bgImage.height,
         crop.width * bgImage.width,
@@ -85,12 +88,46 @@ export function drawBackground(
         0,
         width,
         height,
+        pixelScale,
       );
     }
   }
 }
 
-export function drawLayer(ctx: CanvasRenderingContext2D, layer: ImageLayer, src: SourceImage) {
+/**
+ * 元画像の切り抜き範囲を、描画先の w × h（キャンバス座標）に描く。
+ * 大きく縮小する場合は、先に段階縮小してから描画して画質を保つ（回転時のジャギー対策）。
+ * pixelScale は出力倍率（キャンバス座標 1 あたりの実ピクセル数）。
+ */
+function drawCropped(
+  ctx: CanvasRenderingContext2D,
+  src: SourceImage,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+  dx: number,
+  dy: number,
+  w: number,
+  h: number,
+  pixelScale: number,
+) {
+  const tw = w * pixelScale;
+  const th = h * pixelScale;
+  if (sw / Math.max(tw, 1) > STEP_DOWNSCALE_THRESHOLD && sh / Math.max(th, 1) > STEP_DOWNSCALE_THRESHOLD) {
+    const small = downscaleRegion(src.image, sx, sy, sw, sh, tw, th);
+    try {
+      ctx.drawImage(small, 0, 0, small.width, small.height, dx, dy, w, h);
+    } finally {
+      small.width = 0;
+      small.height = 0;
+    }
+    return;
+  }
+  ctx.drawImage(src.image, sx, sy, sw, sh, dx, dy, w, h);
+}
+
+export function drawLayer(ctx: CanvasRenderingContext2D, layer: ImageLayer, src: SourceImage, pixelScale = 1) {
   if (!layer.visible || layer.opacity <= 0) return;
   const { width: w, height: h, crop } = layer;
   ctx.save();
@@ -102,8 +139,9 @@ export function drawLayer(ctx: CanvasRenderingContext2D, layer: ImageLayer, src:
     roundRectPath(ctx, -w / 2, -h / 2, w, h, layer.borderRadius);
     ctx.clip();
   }
-  ctx.drawImage(
-    src.image,
+  drawCropped(
+    ctx,
+    src,
     crop.x * src.width,
     crop.y * src.height,
     crop.width * src.width,
@@ -112,6 +150,7 @@ export function drawLayer(ctx: CanvasRenderingContext2D, layer: ImageLayer, src:
     -h / 2,
     w,
     h,
+    pixelScale,
   );
   ctx.restore();
 }
@@ -152,7 +191,7 @@ export async function renderProject(
     bgImage = r?.source ?? null;
     bgRelease = r?.release;
   }
-  drawBackground(ctx, doc.background, doc.canvasWidth, doc.canvasHeight, bgImage);
+  drawBackground(ctx, doc.background, doc.canvasWidth, doc.canvasHeight, bgImage, scale);
   bgRelease?.();
   opts.onProgress?.(1, total);
 
@@ -161,7 +200,7 @@ export async function renderProject(
     const r = await resolve(layer.assetId);
     if (r) {
       try {
-        drawLayer(ctx, layer, r.source);
+        drawLayer(ctx, layer, r.source, scale);
       } finally {
         r.release?.();
       }

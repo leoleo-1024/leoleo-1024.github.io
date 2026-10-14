@@ -23,7 +23,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx vite build && npx vite preview --port 4173 --strictPort',
+    // テスト用フック（window.__editor）を含むビルドを、公開用の ../collage/ とは別の dist-e2e/ に出力して起動する
+    command: 'npx vite build --outDir dist-e2e --emptyOutDir && npx vite preview --outDir dist-e2e --port 4173 --strictPort',
+    env: { VITE_E2E: '1' },
     url: 'http://localhost:4173/collage/',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -90,7 +90,13 @@ function sameDoc(a: ProjectDoc, b: ProjectDoc) {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let thumbTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingThumbnail: Blob | undefined;
+/** 開いているプロジェクトの一覧用サムネイル（保存のたびに DB を読み直さないようメモリに保持） */
+let currentThumbnail: { projectId: string; blob: Blob } | null = null;
+/**
+ * 保存処理を直列化するためのキュー。
+ * 非同期の保存が重なったとき、古い内容が後から書き込まれて新しい編集を上書きしないようにする。
+ */
+let saveQueue: Promise<void> = Promise.resolve();
 
 export const useEditor = create<EditorState>((set, get) => {
   const layoutDoc = (doc: ProjectDoc) => applyLayout(doc, assetSizes(get().assets));
@@ -121,8 +127,9 @@ export const useEditor = create<EditorState>((set, get) => {
         },
         { scale, opaqueFallback: '#2c2c2e' },
       );
-      pendingThumbnail = await canvasToBlob(canvas, 'image/jpeg', 0.75);
+      const blob = await canvasToBlob(canvas, 'image/jpeg', 0.75);
       canvas.width = 0;
+      currentThumbnail = { projectId: project.id, blob };
       if (get().project?.id === project.id && !saveTimer) await get().flushSave();
     } catch {
       /* サムネイルは必須ではない */
@@ -161,8 +168,8 @@ export const useEditor = create<EditorState>((set, get) => {
         const assetRows = await assetsRepo.listByProject(id);
         const assets: Record<string, AssetMeta> = {};
         for (const a of assetRows) assets[a.id] = toMeta(a);
-        const { thumbnail: _t, ...project } = rec;
-        void _t;
+        const { thumbnail, ...project } = rec;
+        currentThumbnail = thumbnail ? { projectId: id, blob: thumbnail } : null;
         // 欠損したアセットを参照するレイヤーは除外する
         const doc = docOf(project);
         const fixed: ProjectDoc = {
@@ -375,29 +382,37 @@ export const useEditor = create<EditorState>((set, get) => {
       });
     },
 
-    flushSave: async () => {
+    flushSave: () => {
       if (saveTimer) {
         clearTimeout(saveTimer);
         saveTimer = null;
       }
-      const { project, doc } = get();
-      if (!project || !doc) return;
-      const updated: ProjectRecord = { ...project, ...doc, updatedAt: Date.now() };
-      if (pendingThumbnail) updated.thumbnail = pendingThumbnail;
-      else {
-        const prev = await projectsRepo.get(project.id).catch(() => undefined);
-        if (prev?.thumbnail) updated.thumbnail = prev.thumbnail;
-      }
-      set({ saveStatus: 'saving' });
-      try {
-        await projectsRepo.put(updated);
-        pendingThumbnail = undefined;
-        if (get().project?.id === project.id) set({ saveStatus: 'saved', saveError: null, project: { ...get().project!, updatedAt: updated.updatedAt } });
-      } catch (e) {
-        const err = e instanceof StorageError ? e : toStorageError(e);
-        set({ saveStatus: 'error', saveError: err.message });
-        toast.error(err.message);
-      }
+      // 直前の保存が終わってから、その時点の最新状態を書き込む
+      const run = async () => {
+        const { project, doc } = get();
+        if (!project || !doc) return;
+        const updated: ProjectRecord = { ...project, ...doc, updatedAt: Date.now() };
+        if (currentThumbnail?.projectId === project.id) updated.thumbnail = currentThumbnail.blob;
+        set({ saveStatus: 'saving' });
+        try {
+          await projectsRepo.put(updated);
+          const now = get();
+          if (now.project?.id === project.id) {
+            set({
+              // 保存中にさらに編集された場合は「保存待ち」のままにする
+              saveStatus: saveTimer ? 'pending' : 'saved',
+              saveError: null,
+              project: { ...now.project, updatedAt: updated.updatedAt },
+            });
+          }
+        } catch (e) {
+          const err = e instanceof StorageError ? e : toStorageError(e);
+          set({ saveStatus: 'error', saveError: err.message });
+          toast.error(err.message);
+        }
+      };
+      saveQueue = saveQueue.then(run, run);
+      return saveQueue;
     },
   };
 });

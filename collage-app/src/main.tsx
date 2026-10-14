@@ -2,8 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { registerServiceWorker } from './lib/pwa';
 import { toast } from './state/toast';
-import { useEditor } from './state/editorStore';
 import './index.css';
 
 // iOS Safari：ピンチ操作でページ全体が拡大されるのを防ぐ（キャンバス内の操作を優先）
@@ -17,12 +17,13 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 // PWA：Service Worker を登録してオフラインで使えるようにする
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  import('virtual:pwa-register').then(({ registerSW }) => registerSW({ immediate: true })).catch(() => {});
-}
+registerServiceWorker();
 
-// 動作検証（E2E テスト）用に状態を参照できるようにする（ローカルのみで外部送信はしない）
-(window as unknown as { __editor: typeof useEditor }).__editor = useEditor;
+// E2E テスト用ビルド（VITE_E2E=1）でのみ内部状態を公開する。
+// 本番ビルドでは条件が false に置き換わり、このコードは出力に含まれない。
+if (import.meta.env.VITE_E2E === '1') {
+  void import('./testHooks').then((m) => m.installTestHooks());
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
