@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { ProjectGate } from './components/useProject';
 import { Toasts } from './components/ui';
+import { applyPendingUpdate } from './lib/pwa';
 import { useRoute } from './lib/router';
 import { EditorScreen } from './screens/editor/EditorScreen';
 import { ExportScreen } from './screens/ExportScreen';
@@ -13,9 +14,17 @@ import { useEditor } from './state/editorStore';
 export function App() {
   const route = useRoute();
 
-  // プロジェクト外の画面に移ったら、保存してメモリを解放
+  // プロジェクト外の画面に移ったら、保存してメモリを解放。
+  // 新しいバージョンが配信されていれば、保存が終わったこのタイミングで適用する
   useEffect(() => {
-    if (route.name === 'home' || route.name === 'settings') void useEditor.getState().closeProject();
+    if (route.name === 'home' || route.name === 'settings') {
+      void useEditor
+        .getState()
+        .closeProject()
+        .then(() => {
+          if (route.name === 'home') applyPendingUpdate();
+        });
+    }
   }, [route.name]);
 
   // アプリが背面に回る・閉じられる直前に保存

@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProject } from '../../src/model/project';
 import { makeLayer } from '../../src/model/layout';
 import { projectsRepo, assetsRepo, db } from '../../src/storage/db';
@@ -86,5 +86,41 @@ describe('editor store', () => {
     await new Promise((r) => setTimeout(r, 50));
     const rows = await assetsRepo.listByProject(p.id);
     expect(rows.map((r) => r.id)).toEqual(['a1']);
+  });
+
+  it('保存が重なっても古い内容で上書きされない（保存の直列化）', async () => {
+    const p = await setup();
+    const realPut = projectsRepo.put;
+    let calls = 0;
+    const spy = vi.spyOn(projectsRepo, 'put').mockImplementation(async (rec) => {
+      // 1 回目の保存だけ遅くし、従来なら後から完了して新しい内容を上書きする状況を作る
+      if (++calls === 1) await new Promise((r) => setTimeout(r, 80));
+      return realPut(rec);
+    });
+    try {
+      const s = useEditor.getState();
+      s.commit((d) => ({ ...d, background: { type: 'color', color: '#111111' } }));
+      const first = s.flushSave();
+      s.commit((d) => ({ ...d, background: { type: 'color', color: '#222222' } }));
+      const second = s.flushSave();
+      await Promise.all([first, second]);
+    } finally {
+      spy.mockRestore();
+    }
+    const saved = await projectsRepo.get(p.id);
+    expect(saved!.background).toEqual({ type: 'color', color: '#222222' });
+  });
+
+  it('サムネイルは保存のたびに失われない', async () => {
+    const p = await setup();
+    const thumb = new Blob([new Uint8Array([9])], { type: 'image/jpeg' });
+    await useEditor.getState().closeProject();
+    await projectsRepo.put({ ...(await projectsRepo.get(p.id))!, thumbnail: thumb });
+    await useEditor.getState().openProject(p.id);
+    useEditor.getState().commit((d) => ({ ...d, background: { type: 'color', color: '#333333' } }));
+    await useEditor.getState().flushSave();
+    const saved = await projectsRepo.get(p.id);
+    expect(saved!.thumbnail).toBeTruthy();
+    expect(saved!.background).toEqual({ type: 'color', color: '#333333' });
   });
 });

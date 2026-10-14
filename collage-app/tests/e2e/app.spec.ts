@@ -325,3 +325,53 @@ test('50枚の画像を追加して編集・書き出しできる', async ({ pag
   await expect(page.getByTestId('export-result')).toBeVisible({ timeout: 60_000 });
   console.log('export 50 images ms', Date.now() - t2);
 });
+
+test('大きな画像（4000×3000）を縦横比を保って読み込み、JPEGで書き出せる', async ({ page }) => {
+  await page.goto('./');
+  // 細かい縞模様の大きな JPEG をブラウザ内で生成
+  const b64 = await page.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 4000;
+    c.height = 3000;
+    const ctx = c.getContext('2d')!;
+    for (let x = 0; x < 4000; x += 4) {
+      ctx.fillStyle = (x / 4) % 2 ? '#000' : '#fff';
+      ctx.fillRect(x, 0, 4, 3000);
+    }
+    ctx.fillStyle = '#e53935';
+    ctx.fillRect(0, 0, 2000, 1500);
+    return c.toDataURL('image/jpeg', 0.9).split(',')[1];
+  });
+  await page.getByRole('button', { name: '新しい壁紙を作成' }).click();
+  await page.getByTestId('file-input').setInputFiles({ name: 'big.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(b64, 'base64') });
+  await expect(page.getByTestId('selected-count')).toHaveText('選択中：1枚', { timeout: 30_000 });
+  await page.getByRole('button', { name: '編集へ進む' }).click();
+  await page.waitForTimeout(500);
+  const { doc, assets } = await getDoc(page);
+  expect(assets[0].w).toBe(4000);
+  expect(assets[0].h).toBe(3000);
+  expect(doc.imageLayers[0].width / doc.imageLayers[0].height).toBeCloseTo(4 / 3, 3);
+
+  // 回転させて小さく配置した状態で JPEG 書き出し
+  await page.evaluate(() => {
+    const s = (window as any).__editor.getState();
+    s.commit((d: any) => ({ ...d, imageLayers: d.imageLayers.map((l: any) => ({ ...l, rotation: 23, width: l.width * 0.5, height: l.height * 0.5 })) }));
+  });
+  await page.getByRole('button', { name: '保存・書き出し' }).click();
+  await page.getByRole('tab', { name: 'JPEG（軽量）' }).click();
+  await page.getByRole('button', { name: '画像を書き出す' }).click();
+  await expect(page.getByTestId('export-result')).toBeVisible({ timeout: 30_000 });
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByTestId('download-button').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.jpg$/);
+  const buf = await (await download.createReadStream()).toArray().then((c) => Buffer.concat(c as Buffer[]));
+  expect([buf[0], buf[1], buf[2]]).toEqual([0xff, 0xd8, 0xff]);
+  const size = await page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/jpeg;base64,${b64}`;
+    await img.decode();
+    return [img.naturalWidth, img.naturalHeight];
+  }, buf.toString('base64'));
+  expect(size).toEqual([1179, 2556]);
+});

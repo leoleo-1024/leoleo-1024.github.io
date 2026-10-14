@@ -3,3 +3,4 @@ test-results
 playwright-report
 *.tsbuildinfo
 tests/e2e/.fixtures
+dist-e2e
