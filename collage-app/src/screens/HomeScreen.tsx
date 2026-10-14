@@ -1,9 +1,12 @@
-import { ImageIcon, MoreHorizontal, Pencil, Plus, Settings, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ConfirmDialog, Header, IconButton } from '../components/ui';
+import { Archive, ArchiveRestore, Download, ImageIcon, MoreHorizontal, Pencil, Plus, Settings, Share, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, ConfirmDialog, Header, IconButton, ProgressOverlay } from '../components/ui';
+import { canShareFile, downloadFile, shareFile } from '../render/export';
+import { BackupError, exportProjectBackup, importProjectBackup } from '../storage/backup';
 import { navigate } from '../lib/router';
 import { createProject } from '../model/project';
 import { projectsRepo, requestPersistence, StorageError, type ProjectRecord } from '../storage/db';
+import { useEditor } from '../state/editorStore';
 import { toast } from '../state/toast';
 
 function formatDate(t: number) {
@@ -27,6 +30,9 @@ export function HomeScreen() {
   const [menuFor, setMenuFor] = useState<ProjectRecord | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ProjectRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ label: string; done: number; total: number } | null>(null);
+  const [backup, setBackup] = useState<File | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
   const urls = useObjectUrls(projects ?? []);
 
   const reload = useCallback(() => {
@@ -78,6 +84,47 @@ export function HomeScreen() {
     }
   };
 
+  const exportBackup = async (p: ProjectRecord) => {
+    setMenuFor(null);
+    setProgress({ label: 'バックアップを作成中…', done: 0, total: 1 });
+    try {
+      // 直前まで編集していた場合に備え、保存処理が終わるのを待つ
+      await useEditor.getState().flushSave();
+      const file = await exportProjectBackup(p.id, (done, total) => setProgress({ label: 'バックアップを作成中…', done, total }));
+      setBackup(file);
+    } catch (e) {
+      toast.error(e instanceof BackupError || e instanceof StorageError ? e.message : 'バックアップを作成できませんでした。');
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  // 共有シートはタップ直後に呼ぶ必要があるため、作成済みのファイルを渡す
+  const saveBackup = async (file: File) => {
+    const outcome = await shareFile(file);
+    if (outcome === 'unsupported') downloadFile(file);
+    else if (outcome === 'failed') {
+      toast.error('共有シートを開けませんでした。「ダウンロード」をお試しください。');
+      return;
+    } else if (outcome === 'cancelled') return;
+    setBackup(null);
+  };
+
+  const restore = async (file: File) => {
+    setProgress({ label: 'バックアップから復元中…', done: 0, total: 1 });
+    try {
+      const r = await importProjectBackup(file, (done, total) => setProgress({ label: 'バックアップから復元中…', done, total }));
+      toast.success(
+        r.skipped ? `「${r.name}」を復元しました（壊れていた画像${r.skipped}枚を除く）` : `「${r.name}」を復元しました（${r.imageCount}枚）`,
+      );
+      reload();
+    } catch (e) {
+      toast.error(e instanceof BackupError || e instanceof StorageError ? e.message : 'バックアップから復元できませんでした。');
+    } finally {
+      setProgress(null);
+    }
+  };
+
   const latest = projects?.[0];
 
   return (
@@ -118,6 +165,26 @@ export function HomeScreen() {
             </span>
           </button>
         )}
+
+        <button
+          onClick={() => importInput.current?.click()}
+          className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-2xl bg-surface px-4 text-left text-[15px] active:opacity-80"
+        >
+          <ArchiveRestore size={20} className="text-accent" />
+          バックアップから復元
+        </button>
+        <input
+          ref={importInput}
+          type="file"
+          accept=".zip,application/zip,application/x-zip-compressed"
+          className="hidden"
+          data-testid="backup-input"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void restore(f);
+          }}
+        />
 
         <h2 className="mt-6 mb-2 text-[13px] font-medium text-muted">保存済みプロジェクト</h2>
         {error && <p className="rounded-xl bg-surface p-4 text-[14px] text-[#ffb4ab]">{error}</p>}
@@ -166,6 +233,9 @@ export function HomeScreen() {
             <button className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-[16px] active:bg-surface-3" onClick={() => rename(menuFor)}>
               <Pencil size={20} /> 名前を変更
             </button>
+            <button className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-[16px] active:bg-surface-3" onClick={() => exportBackup(menuFor)}>
+              <Archive size={20} /> バックアップを書き出す
+            </button>
             <button
               className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-[16px] text-danger active:bg-surface-3"
               onClick={() => {
@@ -184,12 +254,41 @@ export function HomeScreen() {
       <ConfirmDialog
         open={!!confirmDelete}
         title="プロジェクトを削除しますか？"
-        message="追加した画像も含めて削除され、元に戻せません。iPhoneの写真ライブラリには影響しません。"
+        message="追加した画像も含めて削除され、元に戻せません（必要なら先に「バックアップを書き出す」で保存してください）。iPhoneの写真ライブラリには影響しません。"
         confirmLabel="削除"
         danger
         onConfirm={() => confirmDelete && remove(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
       />
+
+      {backup && (
+        <div className="fixed inset-0 z-[85] flex animate-fade items-center justify-center bg-black/60 p-6" onClick={() => setBackup(null)}>
+          <div role="dialog" aria-modal="true" aria-label="バックアップの保存" className="w-full max-w-sm rounded-2xl bg-surface-2 p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-[17px] font-semibold">バックアップを作成しました</h2>
+            <p className="mt-1 text-[13px] text-white/70">
+              {backup.size < 1024 * 1024 ? `${Math.max(1, Math.round(backup.size / 1024))} KB` : `${(backup.size / 1024 / 1024).toFixed(1)} MB`}。共有シートの「"ファイル"に保存」で iCloud Drive などに保存しておくと、ブラウザのデータが消えても「バックアップから復元」で元に戻せます。
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Button variant="primary" onClick={() => saveBackup(backup)} data-testid="backup-share">
+                <Share size={20} /> {canShareFile(backup) ? 'ファイルに保存・共有' : '保存'}
+              </Button>
+              <Button
+                onClick={() => {
+                  downloadFile(backup);
+                  setBackup(null);
+                }}
+                data-testid="backup-download"
+              >
+                <Download size={20} /> ダウンロード
+              </Button>
+              <Button variant="ghost" onClick={() => setBackup(null)}>
+                閉じる
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {progress && <ProgressOverlay label={progress.label} done={progress.done} total={progress.total} />}
     </div>
   );
 }

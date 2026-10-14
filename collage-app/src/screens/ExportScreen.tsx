@@ -1,5 +1,5 @@
 import { CheckCircle2, ChevronLeft, Download, Share } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Header, IconButton, ProgressOverlay, Segmented } from '../components/ui';
 import { navigate } from '../lib/router';
 import { presetLabel } from '../model/presets';
@@ -18,7 +18,8 @@ const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.pla
 export function ExportScreen({ projectId }: { projectId: string }) {
   const doc = useEditor((s) => s.doc)!;
   const project = useEditor((s) => s.project)!;
-  const [format, setFormat] = useState<ExportFormat>('png');
+  // 保存済みの形式設定を読み込むまでは null（読み込み後に自動で書き出しを開始する）
+  const [format, setFormat] = useState<ExportFormat | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,32 +28,39 @@ export function ExportScreen({ projectId }: { projectId: string }) {
   useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
 
   useEffect(() => {
-    settingsRepo.get<ExportFormat>('exportFormat', 'png').then(setFormat);
+    settingsRepo.get<ExportFormat>('exportFormat', 'png').then((f) => setFormat(f === 'jpeg' ? 'jpeg' : 'png'));
   }, []);
-
-  // 編集内容・形式が変わったら書き出し結果を破棄
-  useEffect(() => {
-    setResult(null);
-    setSavedMsg(null);
-  }, [doc, format]);
 
   const transparentJpeg = format === 'jpeg' && doc.background.type === 'transparent';
 
-  const run = async () => {
-    setError(null);
-    setSavedMsg(null);
-    setProgress({ done: 0, total: doc.imageLayers.length + 1 });
-    try {
-      await useEditor.getState().flushSave();
-      const r = await exportProject(doc, project.name, format, (done, total) => setProgress({ done, total }));
-      setResult(r);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(`書き出しに失敗しました：${msg}。画像の枚数を減らすか、他のアプリを終了してから再度お試しください。`);
-    } finally {
-      setProgress(null);
-    }
-  };
+  // 実行のたびに番号を振り、古い実行の結果が後から表示されないようにする
+  const runId = useRef(0);
+  const run = useCallback(
+    async (fmt: ExportFormat) => {
+      const id = ++runId.current;
+      setResult(null);
+      setError(null);
+      setSavedMsg(null);
+      setProgress({ done: 0, total: doc.imageLayers.length + 1 });
+      try {
+        await useEditor.getState().flushSave();
+        const r = await exportProject(doc, project.name, fmt, (done, total) => id === runId.current && setProgress({ done, total }));
+        if (id === runId.current) setResult(r);
+      } catch (e) {
+        if (id !== runId.current) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(`書き出しに失敗しました：${msg}。画像の枚数を減らすか、他のアプリを終了してから再度お試しください。`);
+      } finally {
+        if (id === runId.current) setProgress(null);
+      }
+    },
+    [doc, project.name],
+  );
+
+  // 画面を開いたとき・形式を変えたときに自動で書き出す（保存までのタップを減らす）
+  useEffect(() => {
+    if (format) void run(format);
+  }, [format, run]);
 
   // 共有シートはタップ直後に同期的に呼ぶ必要があるため、書き出し済みのファイルを使う
   const share = async () => {
@@ -90,7 +98,7 @@ export function ExportScreen({ projectId }: { projectId: string }) {
           <div>
             <p className="mb-1.5 text-[13px] text-muted">画像形式</p>
             <Segmented<ExportFormat>
-              value={format}
+              value={format ?? 'png'}
               onChange={(f) => {
                 setFormat(f);
                 void settingsRepo.set('exportFormat', f).catch(() => {});
@@ -109,9 +117,11 @@ export function ExportScreen({ projectId }: { projectId: string }) {
           </div>
           <p className="text-[12px] text-muted">{presetLabel(doc.presetId, doc.canvasWidth, doc.canvasHeight)}</p>
           {transparentJpeg && <p className="text-[12px] text-[#ffd60a]">JPEGは透明を扱えないため、背景は黒になります。透明のまま保存するにはPNGを選んでください。</p>}
-          <Button variant="primary" className="w-full" onClick={run} disabled={!!progress}>
-            {result ? 'もう一度書き出す' : '画像を書き出す'}
-          </Button>
+          {!result && !progress && (
+            <Button variant="primary" className="w-full" onClick={() => format && run(format)} disabled={!format}>
+              {error ? 'もう一度書き出す' : '画像を書き出す'}
+            </Button>
+          )}
         </section>
 
         {error && (
@@ -124,7 +134,7 @@ export function ExportScreen({ projectId }: { projectId: string }) {
           <section className="mt-4 animate-fade" data-testid="export-result">
             <div className="flex items-center gap-2 text-[14px] text-[#a6f4b6]">
               <CheckCircle2 size={18} />
-              書き出し完了（{result.width} × {result.height} px・{formatBytes(result.blob.size)}）
+              書き出し完了（{result.format === 'png' ? 'PNG' : 'JPEG'}・{result.width} × {result.height} px・{formatBytes(result.blob.size)}）
             </div>
             <div className="mt-3 flex gap-3">
               <Button variant="primary" className="flex-1" onClick={share} data-testid="share-button">

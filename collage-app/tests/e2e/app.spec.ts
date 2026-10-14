@@ -170,8 +170,8 @@ test('1179×2556 で書き出し、編集画面と一致し、UI が映り込ま
 
   await page.getByRole('button', { name: '保存・書き出し' }).click();
   await expect(page.getByTestId('output-size')).toHaveText('1179 × 2556 px');
-  await page.getByRole('button', { name: '画像を書き出す' }).click();
-  await expect(page.getByTestId('export-result')).toBeVisible({ timeout: 30_000 });
+  // 書き出し画面を開くと自動で書き出しが始まる
+  await expect(page.getByTestId('export-result')).toContainText('PNG', { timeout: 30_000 });
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('download-button').click();
@@ -321,7 +321,6 @@ test('50枚の画像を追加して編集・書き出しできる', async ({ pag
   await page.getByRole('tab', { name: 'グリッド' }).click();
   await page.getByRole('button', { name: '保存・書き出し' }).click();
   const t2 = Date.now();
-  await page.getByRole('button', { name: '画像を書き出す' }).click();
   await expect(page.getByTestId('export-result')).toBeVisible({ timeout: 60_000 });
   console.log('export 50 images ms', Date.now() - t2);
 });
@@ -358,9 +357,10 @@ test('大きな画像（4000×3000）を縦横比を保って読み込み、JPEG
     s.commit((d: any) => ({ ...d, imageLayers: d.imageLayers.map((l: any) => ({ ...l, rotation: 23, width: l.width * 0.5, height: l.height * 0.5 })) }));
   });
   await page.getByRole('button', { name: '保存・書き出し' }).click();
+  // まず保存済みの形式（PNG）で自動書き出しされ、JPEG に切り替えると自動で書き出し直す
+  await expect(page.getByTestId('export-result')).toContainText('PNG', { timeout: 30_000 });
   await page.getByRole('tab', { name: 'JPEG（軽量）' }).click();
-  await page.getByRole('button', { name: '画像を書き出す' }).click();
-  await expect(page.getByTestId('export-result')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('export-result')).toContainText('JPEG', { timeout: 30_000 });
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('download-button').click();
   const download = await downloadPromise;
@@ -374,4 +374,59 @@ test('大きな画像（4000×3000）を縦横比を保って読み込み、JPEG
     return [img.naturalWidth, img.naturalHeight];
   }, buf.toString('base64'));
   expect(size).toEqual([1179, 2556]);
+});
+
+test('プロジェクトをバックアップに書き出し、別のプロジェクトとして復元できる', async ({ page, fixtures }) => {
+  await createProjectWithImages(page, [fixtures['red-landscape.jpg'], fixtures['blue-portrait.png']]);
+  await page.evaluate(() => {
+    const s = (window as any).__editor.getState();
+    s.commit((d: any) => ({
+      ...d,
+      background: { type: 'color', color: '#ff00aa' },
+      imageLayers: d.imageLayers.map((l: any, i: number) => ({ ...l, rotation: 10 + i, borderRadius: 30 })),
+    }));
+  });
+  const { doc: original } = await getDoc(page);
+  await page.getByRole('button', { name: '戻る' }).click();
+
+  // ホームのメニューからバックアップを書き出す
+  await page.getByRole('button', { name: /のメニュー$/ }).first().click();
+  await page.getByRole('button', { name: 'バックアップを書き出す' }).click();
+  await expect(page.getByRole('dialog', { name: 'バックアップの保存' })).toBeVisible({ timeout: 30_000 });
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByTestId('backup-download').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^collage-backup-.*\.zip$/);
+  const zipPath = await download.path();
+
+  // 復元すると 2 つ目のプロジェクトとして追加される
+  await page.getByTestId('backup-input').setInputFiles(zipPath);
+  await expect(page.getByText(/を復元しました（2枚）/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: /を開く$/ })).toHaveCount(2);
+
+  // 復元したプロジェクト（一覧の先頭＝最新）を開いて内容を確認
+  await page.getByRole('button', { name: /を開く$/ }).first().click();
+  await expect(page.getByTestId('canvas-container')).toBeVisible();
+  await page.waitForTimeout(500);
+  const { doc: restored, assets } = await getDoc(page);
+  expect(restored.background).toEqual({ type: 'color', color: '#ff00aa' });
+  expect(restored.imageLayers.map((l: any) => [l.rotation, l.borderRadius, Math.round(l.x), Math.round(l.width)])).toEqual(
+    original.imageLayers.map((l: any) => [l.rotation, l.borderRadius, Math.round(l.x), Math.round(l.width)]),
+  );
+  expect(restored.imageLayers[0].assetId).not.toBe(original.imageLayers[0].assetId);
+  expect(assets.map((a: any) => [a.w, a.h]).sort()).toEqual([
+    [600, 900],
+    [800, 600],
+  ]);
+
+  // 復元したプロジェクトも書き出せる
+  await page.getByRole('button', { name: '保存・書き出し' }).click();
+  await expect(page.getByTestId('export-result')).toContainText('1179 × 2556', { timeout: 30_000 });
+});
+
+test('壊れたバックアップファイルはエラー内容を表示し、データを追加しない', async ({ page }) => {
+  await page.goto('./');
+  await page.getByTestId('backup-input').setInputFiles({ name: 'broken.zip', mimeType: 'application/zip', buffer: Buffer.from('this is not a zip') });
+  await expect(page.getByRole('alert')).toContainText('バックアップファイルを読み込めませんでした');
+  await expect(page.getByText('まだプロジェクトはありません')).toBeVisible();
 });
