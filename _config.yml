@@ -1,0 +1,4 @@
+# GitHub Pages (Jekyll) の設定
+# collage-app/ はアプリのソースコードのため公開対象から除外する（ビルド結果は /collage/ に出力）
+exclude:
+  - collage-app
