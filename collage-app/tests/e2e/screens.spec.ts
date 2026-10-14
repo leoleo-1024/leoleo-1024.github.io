@@ -27,7 +27,6 @@ test('screenshots', async ({ page, fixtures }) => {
   await page.waitForTimeout(300);
   await page.screenshot({ path: out + '/8-preview-home.png' });
   await page.getByRole('button', { name: '書き出し' }).click();
-  await page.getByRole('button', { name: '画像を書き出す' }).click();
   await page.getByTestId('export-result').waitFor();
   await page.screenshot({ path: out + '/9-export.png' });
   await page.goto('./#/');
