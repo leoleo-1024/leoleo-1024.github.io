@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { ProjectGate } from './components/useProject';
 import { Toasts } from './components/ui';
 import { applyPendingUpdate } from './lib/pwa';
+import { cleanupInterruptedImports } from './storage/backup';
 import { useRoute } from './lib/router';
 import { EditorScreen } from './screens/editor/EditorScreen';
 import { ExportScreen } from './screens/ExportScreen';
@@ -26,6 +27,11 @@ export function App() {
         });
     }
   }, [route.name]);
+
+  // 前回、復元の途中でアプリが強制終了された場合の残骸を掃除する（既存プロジェクトには触れない）
+  useEffect(() => {
+    void cleanupInterruptedImports();
+  }, []);
 
   // アプリが背面に回る・閉じられる直前に保存
   useEffect(() => {

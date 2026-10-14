@@ -108,26 +108,79 @@ export async function createZip(files: ZipInput[], onProgress?: (done: number, t
 export interface ZipEntry {
   name: string;
   method: number;
+  flags: number;
   crc: number;
   compressedSize: number;
   size: number;
   localOffset: number;
 }
 
+/** 読み込み時の上限（悪意のある・壊れた ZIP からメモリを守る） */
+export interface ZipLimits {
+  /** ZIP ファイル全体の最大サイズ */
+  maxFileSize: number;
+  /** エントリ数の上限 */
+  maxEntries: number;
+  /** 1 エントリの解凍後の最大サイズ */
+  maxEntrySize: number;
+  /** 読み出した（解凍後の）データの累計上限 */
+  maxTotalSize: number;
+}
+
+export const DEFAULT_ZIP_LIMITS: ZipLimits = {
+  maxFileSize: 2 * 1024 ** 3,
+  maxEntries: 20_000,
+  maxEntrySize: 256 * 1024 ** 2,
+  maxTotalSize: 3 * 1024 ** 3,
+};
+
 export interface ZipReader {
   entries: Map<string, ZipEntry>;
-  /** 中身を Blob として取り出す（CRC を検証） */
-  read: (name: string, type?: string) => Promise<Blob>;
-  readText: (name: string) => Promise<string>;
+  /** 中身を Blob として取り出す（サイズ上限と CRC を検証） */
+  read: (name: string, type?: string, maxSize?: number) => Promise<Blob>;
+  readText: (name: string, maxSize?: number) => Promise<string>;
 }
 
 async function view(blob: Blob, start: number, end: number) {
   return new DataView(await blob.slice(start, end).arrayBuffer());
 }
 
+/**
+ * DEFLATE を解凍する。解凍しながらサイズを数え、上限を超えた時点で中断するため、
+ * 圧縮率の極端に高いデータ（ZIP 爆弾）でも巨大なメモリを確保しない。
+ */
+async function inflateLimited(raw: Blob, limit: number): Promise<Uint8Array> {
+  if (typeof DecompressionStream === 'undefined') throw new ZipError('この環境では圧縮された ZIP を読み込めません');
+  const reader = raw.stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > limit) throw new ZipError('解凍後のサイズが大きすぎます');
+      chunks.push(value);
+    }
+  } catch (e) {
+    void reader.cancel().catch(() => {});
+    if (e instanceof ZipError) throw e;
+    throw new ZipError('圧縮データが壊れています');
+  }
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.length;
+  }
+  return out;
+}
+
 /** ZIP を開く（ファイル全体はメモリに読み込まず、必要な部分だけ読む） */
-export async function openZip(file: Blob): Promise<ZipReader> {
+export async function openZip(file: Blob, limits: Partial<ZipLimits> = {}): Promise<ZipReader> {
+  const L: ZipLimits = { ...DEFAULT_ZIP_LIMITS, ...limits };
   if (file.size < 22) throw new ZipError('ZIP ファイルではありません');
+  if (file.size > L.maxFileSize) throw new ZipError('ファイルが大きすぎます');
   const tailStart = Math.max(0, file.size - (0xffff + 22));
   const tail = await view(file, tailStart, file.size);
   let eocd = -1;
@@ -138,57 +191,77 @@ export async function openZip(file: Blob): Promise<ZipReader> {
     }
   }
   if (eocd < 0) throw new ZipError('ZIP ファイルではないか、壊れています');
+  const eocdPos = tailStart + eocd;
   const count = tail.getUint16(eocd + 10, true);
   const cdSize = tail.getUint32(eocd + 12, true);
   const cdOffset = tail.getUint32(eocd + 16, true);
-  if (cdOffset === MAX_U32 || cdOffset + cdSize > file.size) throw new ZipError('対応していない ZIP 形式です');
+  if (tail.getUint16(eocd + 4, true) !== 0 || tail.getUint16(eocd + 6, true) !== 0 || tail.getUint16(eocd + 8, true) !== count) {
+    throw new ZipError('分割された ZIP には対応していません');
+  }
+  if (cdOffset === MAX_U32 || count === 0xffff) throw new ZipError('対応していない ZIP 形式です（ZIP64）');
+  if (count > L.maxEntries) throw new ZipError('ファイル数が多すぎます');
+  // 中央ディレクトリは EOCD の直前に収まっている必要がある
+  if (cdOffset + cdSize > eocdPos || count * 46 > cdSize) throw new ZipError('ZIP ファイルが壊れています（中央ディレクトリ）');
 
   const cd = await view(file, cdOffset, cdOffset + cdSize);
-  const dec = new TextDecoder();
+  const dec = new TextDecoder('utf-8', { fatal: false });
   const entries = new Map<string, ZipEntry>();
   let p = 0;
   for (let i = 0; i < count; i++) {
-    if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== 0x02014b50) throw new ZipError('ZIP ファイルが壊れています');
+    if (p + 46 > cd.byteLength || cd.getUint32(p, true) !== 0x02014b50) throw new ZipError('ZIP ファイルが壊れています（中央ディレクトリ）');
     const nameLen = cd.getUint16(p + 28, true);
     const extraLen = cd.getUint16(p + 30, true);
     const commentLen = cd.getUint16(p + 32, true);
+    if (p + 46 + nameLen + extraLen + commentLen > cd.byteLength) throw new ZipError('ZIP ファイルが壊れています（中央ディレクトリ）');
     const name = dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nameLen));
-    entries.set(name, {
+    const entry: ZipEntry = {
       name,
+      flags: cd.getUint16(p + 8, true),
       method: cd.getUint16(p + 10, true),
       crc: cd.getUint32(p + 16, true),
       compressedSize: cd.getUint32(p + 20, true),
       size: cd.getUint32(p + 24, true),
       localOffset: cd.getUint32(p + 42, true),
-    });
+    };
+    if (entries.has(name)) throw new ZipError('ZIP ファイルが壊れています（同名のファイルが重複）');
+    // ローカルヘッダーとデータは中央ディレクトリより前に収まっている必要がある
+    if (entry.localOffset + 30 + entry.compressedSize > cdOffset) throw new ZipError('ZIP ファイルが壊れています（オフセット）');
+    entries.set(name, entry);
     p += 46 + nameLen + extraLen + commentLen;
   }
 
-  const read = async (name: string, type = ''): Promise<Blob> => {
+  let totalRead = 0;
+  const read = async (name: string, type = '', maxSize = L.maxEntrySize): Promise<Blob> => {
     const e = entries.get(name);
     if (!e) throw new ZipError(`ファイルが見つかりません：${name}`);
+    if (e.flags & 0x1) throw new ZipError('暗号化された ZIP には対応していません');
+    const limit = Math.min(maxSize, L.maxEntrySize);
+    if (e.size > limit) throw new ZipError(`ファイルが大きすぎます：${name}`);
+    if (totalRead + e.size > L.maxTotalSize) throw new ZipError('バックアップの合計サイズが大きすぎます');
+
     const lh = await view(file, e.localOffset, e.localOffset + 30);
-    if (lh.getUint32(0, true) !== 0x04034b50) throw new ZipError('ZIP ファイルが壊れています');
+    if (lh.byteLength < 30 || lh.getUint32(0, true) !== 0x04034b50) throw new ZipError('ZIP ファイルが壊れています（ローカルヘッダー）');
     const start = e.localOffset + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    if (start + e.compressedSize > cdOffset) throw new ZipError('ZIP ファイルが壊れています（オフセット）');
     const raw = file.slice(start, start + e.compressedSize);
-    let out: Blob;
+    let bytes: Uint8Array;
     if (e.method === 0) {
-      out = raw;
+      if (e.compressedSize !== e.size) throw new ZipError(`ファイルが壊れています：${name}`);
+      bytes = await blobBytes(raw);
     } else if (e.method === 8) {
-      if (typeof DecompressionStream === 'undefined') throw new ZipError('この環境では圧縮された ZIP を読み込めません');
-      const stream = raw.stream().pipeThrough(new DecompressionStream('deflate-raw'));
-      out = await new Response(stream).blob();
+      // 宣言サイズを信用せず、実際に解凍した量で上限を判定する
+      bytes = await inflateLimited(raw, Math.min(limit, e.size));
     } else {
       throw new ZipError('対応していない圧縮形式です');
     }
-    const bytes = await blobBytes(out);
     if (bytes.length !== e.size || crc32(bytes) !== e.crc) throw new ZipError(`ファイルが壊れています：${name}`);
+    totalRead += bytes.length;
     return new Blob([bytes as BlobPart], { type });
   };
 
   return {
     entries,
     read,
-    readText: async (name) => (await read(name)).text(),
+    readText: async (name, maxSize) => (await read(name, '', maxSize)).text(),
   };
 }
