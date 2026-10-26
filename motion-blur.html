@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Effects - 画像エフェクトツール</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      color: #8892b0;
+      font-size: 1.1rem;
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 30px;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .main-content {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .canvas-area {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 20px;
+      min-height: 500px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .drop-zone {
+      width: 100%;
+      height: 400px;
+      border: 3px dashed rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: #00d2ff;
+      background: rgba(0, 210, 255, 0.1);
+    }
+
+    .drop-zone svg {
+      width: 80px;
+      height: 80px;
+      fill: rgba(255, 255, 255, 0.5);
+      margin-bottom: 20px;
+    }
+
+    .drop-zone p {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 1.1rem;
+      text-align: center;
+    }
+
+    .drop-zone.hidden {
+      display: none;
+    }
+
+    .canvas-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    #previewCanvas {
+      max-width: 100%;
+      max-height: 500px;
+      border-radius: 8px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      cursor: crosshair;
+    }
+
+    #previewCanvas.hidden {
+      display: none;
+    }
+
+    #brushCursor {
+      position: absolute;
+      border: 2px solid #00d2ff;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      display: none;
+      box-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
+    }
+
+    .controls {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 25px;
+      max-height: calc(100vh - 150px);
+      overflow-y: auto;
+    }
+
+    .control-section {
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .control-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .control-section h3 {
+      font-size: 0.9rem;
+      color: #8892b0;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .control-group {
+      margin-bottom: 18px;
+    }
+
+    .control-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .control-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #ccd6f6;
+      font-size: 0.95rem;
+    }
+
+    .slider-with-input {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-with-input input[type="range"] {
+      flex: 1;
+    }
+
+    .number-input {
+      width: 70px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #00d2ff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+
+    .number-input::-webkit-outer-spin-button,
+    .number-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .number-input:focus {
+      border-color: #00d2ff;
+      box-shadow: 0 0 10px rgba(0, 210, 255, 0.3);
+    }
+
+    .number-input-unit {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .number-input-unit .unit {
+      color: #8892b0;
+      font-size: 0.85rem;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0, 210, 255, 0.5);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 10px rgba(0, 210, 255, 0.5);
+    }
+
+    .angle-preview {
+      width: 60px;
+      height: 60px;
+      margin: 10px auto;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      position: relative;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .angle-preview::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 25px;
+      height: 3px;
+      background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+      transform-origin: left center;
+      border-radius: 2px;
+    }
+
+    .mode-toggle {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: transparent;
+      color: #ccd6f6;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .mode-btn:hover {
+      border-color: rgba(0, 210, 255, 0.5);
+    }
+
+    .mode-btn.active {
+      border-color: #00d2ff;
+      background: rgba(0, 210, 255, 0.2);
+      color: #00d2ff;
+    }
+
+    .effect-select {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .color-select {
+      display: flex;
+      gap: 10px;
+    }
+
+    .color-btn {
+      flex: 1;
+      padding: 15px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .color-btn.white {
+      background: #ffffff;
+      color: #333;
+    }
+
+    .color-btn.black {
+      background: #000000;
+      color: #fff;
+    }
+
+    .color-btn:hover {
+      border-color: rgba(0, 210, 255, 0.5);
+    }
+
+    .color-btn.active {
+      border-color: #00d2ff;
+      box-shadow: 0 0 15px rgba(0, 210, 255, 0.5);
+    }
+
+    .effect-btn {
+      padding: 12px 8px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: transparent;
+      color: #ccd6f6;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-align: center;
+    }
+
+    .effect-btn:hover {
+      border-color: rgba(0, 210, 255, 0.5);
+    }
+
+    .effect-btn.active {
+      border-color: #00d2ff;
+      background: rgba(0, 210, 255, 0.2);
+      color: #00d2ff;
+    }
+
+    .effect-btn .icon {
+      font-size: 1.5rem;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .effect-params {
+      display: none;
+    }
+
+    .effect-params.active {
+      display: block;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-bottom: 10px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(0, 210, 255, 0.4);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-warning {
+      background: rgba(255, 165, 0, 0.2);
+      color: #ffa500;
+      border: 1px solid rgba(255, 165, 0, 0.3);
+    }
+
+    .btn-warning:hover {
+      background: rgba(255, 165, 0, 0.3);
+    }
+
+    .processing {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #8892b0;
+    }
+
+    .processing.active {
+      display: block;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #00d2ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .quality-select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: white;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .quality-select option {
+      background: #1a1a2e;
+      color: white;
+    }
+
+    .keyboard-help {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.8rem;
+      color: #8892b0;
+    }
+
+    .keyboard-help h4 {
+      color: #ccd6f6;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+    }
+
+    .keyboard-help ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .keyboard-help li {
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .keyboard-help kbd {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.8rem;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: #8892b0;
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: #00d2ff;
+      text-decoration: none;
+    }
+
+    .status-bar {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #8892b0;
+      display: none;
+    }
+
+    .status-bar.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Image Effects</h1>
+      <p>画像にさまざまなエフェクトを適用できます</p>
+    </header>
+
+    <div class="main-content">
+      <div class="canvas-area">
+        <div class="drop-zone" id="dropZone">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+          </svg>
+          <p>クリックまたはドラッグ&ドロップで<br>画像をアップロード</p>
+        </div>
+        <div class="canvas-container">
+          <canvas id="previewCanvas" class="hidden"></canvas>
+          <div id="brushCursor"></div>
+        </div>
+        <input type="file" id="fileInput" class="file-input" accept="image/*">
+        <div class="processing" id="processing">
+          <div class="spinner"></div>
+          <p>処理中...</p>
+        </div>
+        <div class="status-bar" id="statusBar">ブラシモード: ドラッグでエフェクトを適用</div>
+      </div>
+
+      <div class="controls">
+        <div class="control-section">
+          <h3>エフェクト選択</h3>
+          <div class="effect-select">
+            <button class="effect-btn active" data-effect="blur">
+              <span class="icon">💨</span>
+              ブラー
+            </button>
+            <button class="effect-btn" data-effect="mosaic">
+              <span class="icon">🔲</span>
+              モザイク
+            </button>
+            <button class="effect-btn" data-effect="twirl">
+              <span class="icon">🌀</span>
+              渦巻き
+            </button>
+            <button class="effect-btn" data-effect="color">
+              <span class="icon">🎨</span>
+              カラー
+            </button>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>モード選択</h3>
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="brushModeBtn">🖌️ ブラシ</button>
+            <button class="mode-btn" id="fullModeBtn">🖼️ 全体</button>
+          </div>
+        </div>
+
+        <div class="control-section" id="brushControls">
+          <h3>ブラシ設定</h3>
+          <div class="control-group">
+            <label>ブラシサイズ</label>
+            <div class="slider-with-input">
+              <input type="range" id="brushSizeSlider" min="10" max="200" value="50">
+              <div class="number-input-unit">
+                <input type="number" id="brushSizeInput" class="number-input" min="10" max="200" value="50">
+                <span class="unit">px</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Motion Blur Parameters -->
+        <div class="control-section effect-params active" id="blurParams">
+          <h3>ブラー設定</h3>
+          <div class="control-group">
+            <label>角度</label>
+            <div class="slider-with-input">
+              <input type="range" id="angleSlider" min="0" max="360" value="0">
+              <div class="number-input-unit">
+                <input type="number" id="angleInput" class="number-input" min="0" max="360" value="0">
+                <span class="unit">°</span>
+              </div>
+            </div>
+            <div class="angle-preview" id="anglePreview"></div>
+          </div>
+
+          <div class="control-group">
+            <label>強度</label>
+            <div class="slider-with-input">
+              <input type="range" id="blurIntensitySlider" min="1" max="100" value="20">
+              <input type="number" id="blurIntensityInput" class="number-input" min="1" max="100" value="20">
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label>サンプル数</label>
+            <div class="slider-with-input">
+              <input type="range" id="samplesSlider" min="5" max="50" value="15">
+              <input type="number" id="samplesInput" class="number-input" min="5" max="50" value="15">
+            </div>
+          </div>
+        </div>
+
+        <!-- Mosaic Parameters -->
+        <div class="control-section effect-params" id="mosaicParams">
+          <h3>モザイク設定</h3>
+          <div class="control-group">
+            <label>ブロックサイズ</label>
+            <div class="slider-with-input">
+              <input type="range" id="mosaicSizeSlider" min="2" max="50" value="10">
+              <div class="number-input-unit">
+                <input type="number" id="mosaicSizeInput" class="number-input" min="2" max="50" value="10">
+                <span class="unit">px</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Twirl Parameters -->
+        <div class="control-section effect-params" id="twirlParams">
+          <h3>渦巻き設定</h3>
+          <div class="control-group">
+            <label>強度</label>
+            <div class="slider-with-input">
+              <input type="range" id="twirlStrengthSlider" min="-180" max="180" value="45">
+              <div class="number-input-unit">
+                <input type="number" id="twirlStrengthInput" class="number-input" min="-180" max="180" value="45">
+                <span class="unit">°</span>
+              </div>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>半径</label>
+            <div class="slider-with-input">
+              <input type="range" id="twirlRadiusSlider" min="10" max="300" value="100">
+              <div class="number-input-unit">
+                <input type="number" id="twirlRadiusInput" class="number-input" min="10" max="300" value="100">
+                <span class="unit">px</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Color Parameters -->
+        <div class="control-section effect-params" id="colorParams">
+          <h3>カラー設定</h3>
+          <div class="control-group">
+            <label>塗りつぶし色</label>
+            <div class="color-select">
+              <button class="color-btn white active" data-color="white">白</button>
+              <button class="color-btn black" data-color="black">黒</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="control-section">
+          <h3>出力</h3>
+          <div class="control-group">
+            <label>形式</label>
+            <select class="quality-select" id="formatSelect">
+              <option value="png">PNG（高品質・透明対応）</option>
+              <option value="jpeg">JPEG（小さいファイルサイズ）</option>
+              <option value="webp">WebP（高効率圧縮）</option>
+            </select>
+          </div>
+
+          <button class="btn btn-primary" id="applyBtn" disabled>全体にエフェクトを適用</button>
+          <button class="btn btn-primary" id="downloadBtn" disabled>画像をダウンロード</button>
+          <button class="btn btn-warning" id="undoBtn" disabled>元に戻す (Ctrl+Z)</button>
+          <button class="btn btn-secondary" id="resetBtn">リセット</button>
+        </div>
+
+        <div class="control-section">
+          <div class="keyboard-help">
+            <h4>ヒント</h4>
+            <ul>
+              <li><span>数値は直接入力可能</span></li>
+              <li><span>元に戻す</span> <kbd>Ctrl+Z</kbd></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p><a href="index.html">トップページに戻る</a></p>
+    </footer>
+  </div>
+
+  <script>
+    // DOM Elements
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const ctx = previewCanvas.getContext('2d');
+    const processing = document.getElementById('processing');
+    const brushCursor = document.getElementById('brushCursor');
+    const statusBar = document.getElementById('statusBar');
+
+    const brushModeBtn = document.getElementById('brushModeBtn');
+    const fullModeBtn = document.getElementById('fullModeBtn');
+    const brushControls = document.getElementById('brushControls');
+
+    const brushSizeSlider = document.getElementById('brushSizeSlider');
+    const brushSizeInput = document.getElementById('brushSizeInput');
+
+    // Blur params
+    const angleSlider = document.getElementById('angleSlider');
+    const angleInput = document.getElementById('angleInput');
+    const anglePreview = document.getElementById('anglePreview');
+    const blurIntensitySlider = document.getElementById('blurIntensitySlider');
+    const blurIntensityInput = document.getElementById('blurIntensityInput');
+    const samplesSlider = document.getElementById('samplesSlider');
+    const samplesInput = document.getElementById('samplesInput');
+
+    // Mosaic params
+    const mosaicSizeSlider = document.getElementById('mosaicSizeSlider');
+    const mosaicSizeInput = document.getElementById('mosaicSizeInput');
+
+    // Twirl params
+    const twirlStrengthSlider = document.getElementById('twirlStrengthSlider');
+    const twirlStrengthInput = document.getElementById('twirlStrengthInput');
+    const twirlRadiusSlider = document.getElementById('twirlRadiusSlider');
+    const twirlRadiusInput = document.getElementById('twirlRadiusInput');
+
+    // Color params
+    const colorBtns = document.querySelectorAll('.color-btn');
+    let selectedColor = 'white';
+
+    const formatSelect = document.getElementById('formatSelect');
+    const applyBtn = document.getElementById('applyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // Effect buttons
+    const effectBtns = document.querySelectorAll('.effect-btn');
+
+    // State
+    let originalImage = null;
+    let historyStack = [];
+    const MAX_HISTORY = 20;
+    let isBrushMode = true;
+    let isDrawing = false;
+    let canvasScale = 1;
+    let currentEffect = 'blur';
+
+    // Offscreen canvases
+    let originalCanvas = null;
+    let effectCanvas = null;
+
+    // Effect selection
+    effectBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        effectBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentEffect = btn.dataset.effect;
+
+        // Show/hide params
+        document.querySelectorAll('.effect-params').forEach(p => p.classList.remove('active'));
+        document.getElementById(`${currentEffect}Params`).classList.add('active');
+
+        // Regenerate effect canvas
+        if (originalImage) {
+          generateEffectImage();
+        }
+      });
+    });
+
+    // Color selection
+    colorBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        colorBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedColor = btn.dataset.color;
+        if (originalImage && currentEffect === 'color') {
+          generateEffectImage();
+        }
+      });
+    });
+
+    // Event Listeners for file upload
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0 && files[0].type.startsWith('image/')) {
+        loadImage(files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        loadImage(e.target.files[0]);
+      }
+    });
+
+    // Load image
+    function loadImage(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          originalImage = img;
+
+          previewCanvas.width = img.width;
+          previewCanvas.height = img.height;
+
+          originalCanvas = document.createElement('canvas');
+          originalCanvas.width = img.width;
+          originalCanvas.height = img.height;
+          originalCanvas.getContext('2d').drawImage(img, 0, 0);
+
+          effectCanvas = document.createElement('canvas');
+          effectCanvas.width = img.width;
+          effectCanvas.height = img.height;
+
+          generateEffectImage();
+          ctx.drawImage(img, 0, 0);
+          updateCanvasScale();
+
+          dropZone.classList.add('hidden');
+          previewCanvas.classList.remove('hidden');
+
+          applyBtn.disabled = false;
+          downloadBtn.disabled = false;
+          historyStack = [];
+          undoBtn.disabled = true;
+
+          if (isBrushMode) {
+            statusBar.classList.add('visible');
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function updateCanvasScale() {
+      const rect = previewCanvas.getBoundingClientRect();
+      canvasScale = previewCanvas.width / rect.width;
+    }
+
+    // Generate effect image based on current effect
+    function generateEffectImage() {
+      switch (currentEffect) {
+        case 'blur':
+          generateMotionBlur();
+          break;
+        case 'mosaic':
+          generateMosaic();
+          break;
+        case 'twirl':
+          generateTwirl();
+          break;
+        case 'color':
+          generateColor();
+          break;
+      }
+    }
+
+    function generateMotionBlur() {
+      const effectCtx = effectCanvas.getContext('2d');
+      const angle = parseFloat(angleSlider.value);
+      const intensity = parseFloat(blurIntensitySlider.value);
+      const samples = parseInt(samplesSlider.value);
+
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      effectCtx.clearRect(0, 0, width, height);
+
+      const radians = (angle * Math.PI) / 180;
+      const dx = Math.cos(radians);
+      const dy = Math.sin(radians);
+
+      effectCtx.globalAlpha = 1 / samples;
+
+      for (let i = 0; i < samples; i++) {
+        const offset = (i - samples / 2) * (intensity / samples);
+        const offsetX = dx * offset;
+        const offsetY = dy * offset;
+        effectCtx.drawImage(originalImage, offsetX, offsetY);
+      }
+
+      effectCtx.globalAlpha = 1;
+    }
+
+    function generateMosaic() {
+      const effectCtx = effectCanvas.getContext('2d');
+      const blockSize = parseInt(mosaicSizeSlider.value);
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      // Draw original first
+      effectCtx.drawImage(originalImage, 0, 0);
+      const imageData = effectCtx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+
+      for (let y = 0; y < height; y += blockSize) {
+        for (let x = 0; x < width; x += blockSize) {
+          let r = 0, g = 0, b = 0, count = 0;
+
+          // Calculate average color in block
+          for (let by = 0; by < blockSize && y + by < height; by++) {
+            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
+              const idx = ((y + by) * width + (x + bx)) * 4;
+              r += data[idx];
+              g += data[idx + 1];
+              b += data[idx + 2];
+              count++;
+            }
+          }
+
+          r = Math.round(r / count);
+          g = Math.round(g / count);
+          b = Math.round(b / count);
+
+          // Fill block with average color
+          for (let by = 0; by < blockSize && y + by < height; by++) {
+            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
+              const idx = ((y + by) * width + (x + bx)) * 4;
+              data[idx] = r;
+              data[idx + 1] = g;
+              data[idx + 2] = b;
+            }
+          }
+        }
+      }
+
+      effectCtx.putImageData(imageData, 0, 0);
+    }
+
+    function generateTwirl() {
+      const effectCtx = effectCanvas.getContext('2d');
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      // Get original image data
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(originalImage, 0, 0);
+      const srcData = tempCtx.getImageData(0, 0, width, height);
+      const src = srcData.data;
+
+      const dstData = effectCtx.createImageData(width, height);
+      const dst = dstData.data;
+
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = parseFloat(twirlRadiusSlider.value);
+      const strength = parseFloat(twirlStrengthSlider.value) * Math.PI / 180;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const dx = x - centerX;
+          const dy = y - centerY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          let srcX, srcY;
+
+          if (dist < radius) {
+            const amount = (radius - dist) / radius;
+            const angle = amount * amount * strength;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            srcX = centerX + dx * cos - dy * sin;
+            srcY = centerY + dx * sin + dy * cos;
+          } else {
+            srcX = x;
+            srcY = y;
+          }
+
+          // Bilinear interpolation
+          const x0 = Math.floor(srcX);
+          const y0 = Math.floor(srcY);
+          const x1 = x0 + 1;
+          const y1 = y0 + 1;
+
+          const xWeight = srcX - x0;
+          const yWeight = srcY - y0;
+
+          const dstIdx = (y * width + x) * 4;
+
+          if (x0 >= 0 && x1 < width && y0 >= 0 && y1 < height) {
+            const idx00 = (y0 * width + x0) * 4;
+            const idx10 = (y0 * width + x1) * 4;
+            const idx01 = (y1 * width + x0) * 4;
+            const idx11 = (y1 * width + x1) * 4;
+
+            for (let c = 0; c < 4; c++) {
+              const top = src[idx00 + c] * (1 - xWeight) + src[idx10 + c] * xWeight;
+              const bottom = src[idx01 + c] * (1 - xWeight) + src[idx11 + c] * xWeight;
+              dst[dstIdx + c] = Math.round(top * (1 - yWeight) + bottom * yWeight);
+            }
+          } else {
+            // Edge case: use nearest neighbor
+            const clampX = Math.max(0, Math.min(width - 1, Math.round(srcX)));
+            const clampY = Math.max(0, Math.min(height - 1, Math.round(srcY)));
+            const srcIdx = (clampY * width + clampX) * 4;
+            for (let c = 0; c < 4; c++) {
+              dst[dstIdx + c] = src[srcIdx + c];
+            }
+          }
+        }
+      }
+
+      effectCtx.putImageData(dstData, 0, 0);
+    }
+
+    function generateColor() {
+      const effectCtx = effectCanvas.getContext('2d');
+      const width = originalImage.width;
+      const height = originalImage.height;
+
+      effectCtx.fillStyle = selectedColor === 'white' ? '#ffffff' : '#000000';
+      effectCtx.fillRect(0, 0, width, height);
+    }
+
+    // Sync slider and input helper
+    function syncSliderAndInput(slider, input, callback) {
+      slider.addEventListener('input', () => {
+        input.value = slider.value;
+        if (callback) callback();
+      });
+
+      input.addEventListener('input', () => {
+        let val = parseInt(input.value);
+        const min = parseInt(slider.min);
+        const max = parseInt(slider.max);
+        if (isNaN(val)) val = min;
+        val = Math.max(min, Math.min(max, val));
+        slider.value = val;
+        if (callback) callback();
+      });
+
+      input.addEventListener('blur', () => {
+        let val = parseInt(input.value);
+        const min = parseInt(slider.min);
+        const max = parseInt(slider.max);
+        if (isNaN(val)) val = min;
+        val = Math.max(min, Math.min(max, val));
+        input.value = val;
+        slider.value = val;
+      });
+    }
+
+    // Update angle preview
+    function updateAnglePreview() {
+      const angle = angleSlider.value;
+
+      const styleSheet = document.styleSheets[0];
+      for (let i = 0; i < styleSheet.cssRules.length; i++) {
+        if (styleSheet.cssRules[i].selectorText === '.angle-preview::after') {
+          styleSheet.cssRules[i].style.transform = `rotate(${angle}deg)`;
+          break;
+        }
+      }
+
+      if (originalImage && currentEffect === 'blur') {
+        generateEffectImage();
+      }
+    }
+
+    // Setup slider-input sync
+    syncSliderAndInput(angleSlider, angleInput, updateAnglePreview);
+    syncSliderAndInput(blurIntensitySlider, blurIntensityInput, () => {
+      if (originalImage && currentEffect === 'blur') generateEffectImage();
+    });
+    syncSliderAndInput(samplesSlider, samplesInput, () => {
+      if (originalImage && currentEffect === 'blur') generateEffectImage();
+    });
+    syncSliderAndInput(mosaicSizeSlider, mosaicSizeInput, () => {
+      if (originalImage && currentEffect === 'mosaic') generateEffectImage();
+    });
+    syncSliderAndInput(twirlStrengthSlider, twirlStrengthInput, () => {
+      if (originalImage && currentEffect === 'twirl') generateEffectImage();
+    });
+    syncSliderAndInput(twirlRadiusSlider, twirlRadiusInput, () => {
+      if (originalImage && currentEffect === 'twirl') generateEffectImage();
+    });
+    syncSliderAndInput(brushSizeSlider, brushSizeInput, updateBrushCursor);
+
+    updateAnglePreview();
+
+    // Mode toggle
+    brushModeBtn.addEventListener('click', () => {
+      isBrushMode = true;
+      brushModeBtn.classList.add('active');
+      fullModeBtn.classList.remove('active');
+      brushControls.style.display = 'block';
+      if (originalImage) {
+        statusBar.classList.add('visible');
+      }
+    });
+
+    fullModeBtn.addEventListener('click', () => {
+      isBrushMode = false;
+      fullModeBtn.classList.add('active');
+      brushModeBtn.classList.remove('active');
+      brushControls.style.display = 'none';
+      statusBar.classList.remove('visible');
+      brushCursor.style.display = 'none';
+    });
+
+    // Brush cursor
+    function updateBrushCursor(e) {
+      if (!isBrushMode || !originalImage) return;
+
+      const size = parseInt(brushSizeSlider.value) / canvasScale;
+      brushCursor.style.width = size + 'px';
+      brushCursor.style.height = size + 'px';
+
+      if (e) {
+        const rect = previewCanvas.getBoundingClientRect();
+        brushCursor.style.left = (e.clientX - rect.left) + 'px';
+        brushCursor.style.top = (e.clientY - rect.top) + 'px';
+      }
+    }
+
+    previewCanvas.addEventListener('mouseenter', () => {
+      if (isBrushMode && originalImage) {
+        brushCursor.style.display = 'block';
+        updateBrushCursor();
+      }
+    });
+
+    previewCanvas.addEventListener('mouseleave', () => {
+      brushCursor.style.display = 'none';
+    });
+
+    previewCanvas.addEventListener('mousemove', (e) => {
+      updateBrushCursor(e);
+      if (isDrawing && isBrushMode) {
+        applyBrushAt(e);
+      }
+    });
+
+    previewCanvas.addEventListener('mousedown', (e) => {
+      if (!isBrushMode || !originalImage) return;
+
+      saveToHistory();
+      isDrawing = true;
+      applyBrushAt(e);
+    });
+
+    previewCanvas.addEventListener('mouseup', () => {
+      isDrawing = false;
+    });
+
+    previewCanvas.addEventListener('mouseleave', () => {
+      isDrawing = false;
+    });
+
+    function applyBrushAt(e) {
+      const rect = previewCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * canvasScale;
+      const y = (e.clientY - rect.top) * canvasScale;
+      const radius = parseInt(brushSizeSlider.value) / 2;
+
+      if (currentEffect === 'twirl') {
+        // For twirl, apply centered at brush position
+        applyTwirlAtPoint(x, y, radius);
+      } else if (currentEffect === 'color') {
+        // For color, fill circle with selected color
+        ctx.save();
+        ctx.fillStyle = selectedColor === 'white' ? '#ffffff' : '#000000';
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        // For blur and mosaic, use clipping
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(effectCanvas, 0, 0);
+        ctx.restore();
+      }
+    }
+
+    function applyTwirlAtPoint(cx, cy, radius) {
+      const width = previewCanvas.width;
+      const height = previewCanvas.height;
+
+      // Get current canvas data
+      const srcData = ctx.getImageData(0, 0, width, height);
+      const src = srcData.data;
+
+      // Create destination for the affected area
+      const dstData = ctx.createImageData(width, height);
+      const dst = dstData.data;
+
+      // Copy original data
+      for (let i = 0; i < src.length; i++) {
+        dst[i] = src[i];
+      }
+
+      const strength = parseFloat(twirlStrengthSlider.value) * Math.PI / 180;
+
+      const minX = Math.max(0, Math.floor(cx - radius));
+      const maxX = Math.min(width, Math.ceil(cx + radius));
+      const minY = Math.max(0, Math.floor(cy - radius));
+      const maxY = Math.min(height, Math.ceil(cy + radius));
+
+      for (let y = minY; y < maxY; y++) {
+        for (let x = minX; x < maxX; x++) {
+          const dx = x - cx;
+          const dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < radius) {
+            const amount = (radius - dist) / radius;
+            const angle = amount * amount * strength;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            const srcX = cx + dx * cos - dy * sin;
+            const srcY = cy + dx * sin + dy * cos;
+
+            const x0 = Math.floor(srcX);
+            const y0 = Math.floor(srcY);
+            const x1 = x0 + 1;
+            const y1 = y0 + 1;
+
+            const xWeight = srcX - x0;
+            const yWeight = srcY - y0;
+
+            const dstIdx = (y * width + x) * 4;
+
+            if (x0 >= 0 && x1 < width && y0 >= 0 && y1 < height) {
+              const idx00 = (y0 * width + x0) * 4;
+              const idx10 = (y0 * width + x1) * 4;
+              const idx01 = (y1 * width + x0) * 4;
+              const idx11 = (y1 * width + x1) * 4;
+
+              for (let c = 0; c < 4; c++) {
+                const top = src[idx00 + c] * (1 - xWeight) + src[idx10 + c] * xWeight;
+                const bottom = src[idx01 + c] * (1 - xWeight) + src[idx11 + c] * xWeight;
+                dst[dstIdx + c] = Math.round(top * (1 - yWeight) + bottom * yWeight);
+              }
+            }
+          }
+        }
+      }
+
+      ctx.putImageData(dstData, 0, 0);
+    }
+
+    function saveToHistory() {
+      const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+      historyStack.push(imageData);
+
+      if (historyStack.length > MAX_HISTORY) {
+        historyStack.shift();
+      }
+
+      undoBtn.disabled = false;
+    }
+
+    function undo() {
+      if (historyStack.length === 0) return;
+
+      const imageData = historyStack.pop();
+      ctx.putImageData(imageData, 0, 0);
+
+      if (historyStack.length === 0) {
+        undoBtn.disabled = true;
+      }
+    }
+
+    undoBtn.addEventListener('click', undo);
+
+    // Apply effect to entire image
+    applyBtn.addEventListener('click', () => {
+      if (!originalImage) return;
+
+      saveToHistory();
+
+      processing.classList.add('active');
+      applyBtn.disabled = true;
+
+      setTimeout(() => {
+        if (currentEffect === 'twirl') {
+          // Apply twirl centered on image
+          const cx = previewCanvas.width / 2;
+          const cy = previewCanvas.height / 2;
+          const radius = parseFloat(twirlRadiusSlider.value);
+          applyTwirlAtPoint(cx, cy, radius);
+        } else if (currentEffect === 'color') {
+          // Fill entire canvas with color
+          ctx.fillStyle = selectedColor === 'white' ? '#ffffff' : '#000000';
+          ctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+        } else {
+          ctx.drawImage(effectCanvas, 0, 0);
+        }
+        processing.classList.remove('active');
+        applyBtn.disabled = false;
+      }, 50);
+    });
+
+    // Download
+    downloadBtn.addEventListener('click', () => {
+      if (!originalImage) return;
+
+      const format = formatSelect.value;
+      const dataUrl = previewCanvas.toDataURL(`image/${format}`, 0.92);
+      const link = document.createElement('a');
+      link.download = `image-effect.${format}`;
+      link.href = dataUrl;
+      link.click();
+    });
+
+    // Reset
+    resetBtn.addEventListener('click', () => {
+      if (!originalImage) return;
+
+      ctx.drawImage(originalImage, 0, 0);
+      historyStack = [];
+      undoBtn.disabled = true;
+    });
+
+    // Keyboard shortcuts (Ctrl+Z for undo)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        undo();
+      }
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      if (originalImage) {
+        updateCanvasScale();
+      }
+    });
+  </script>
+</body>
+</html>
